@@ -102,7 +102,7 @@ class _OpenRouterBackend:
                 {"role": "user", "content": user},
             ],
         )
-        return resp.choices[0].message.content or "" or ""
+        return resp.choices[0].message.content or ""
 
 
 class _OllamaBackend:
@@ -1044,6 +1044,8 @@ class MCQGenerator:
 
         questions = []
         for item in data:
+            if item is None:
+                continue
             try:
                 # Support both old single int and new list format for answers
                 raw_answers = item.get("answers", item.get("correct_answer", 0))

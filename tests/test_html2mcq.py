@@ -1162,6 +1162,13 @@ class TestParseResponse:
         result = gen._parse_response(raw)
         assert result[0].explaination == "uses explanation key"
 
+    def test_null_item_skipped(self):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        raw = '[{"question_html":"Q1","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""},null,{"question_html":"Q2","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""}]'
+        result = gen._parse_response(raw)
+        assert len(result) == 2
+
 
 # ── _resolve_mcq_model_list ─────────────────────────────────────────────────
 
