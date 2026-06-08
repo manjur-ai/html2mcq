@@ -134,7 +134,32 @@ class Html2MCQApp(tk.Tk):
         tk.Label(row2, text="Model", width=10, anchor="w",
                  font=FONT, bg=CARD, fg=TEXT_DIM).pack(side="left")
         self.model_var = tk.StringVar(value="meta-llama/llama-3.3-70b-instruct:free")
-        self._entry(row2, self.model_var).pack(side="left", fill="x", expand=True)
+        self.model_combo = ttk.Combobox(row2, textvariable=self.model_var,
+                                         values=[
+                                             "meta-llama/llama-3.3-70b-instruct:free",
+                                             "meta-llama/llama-3.3-70b-instruct",
+                                             "google/gemini-2.5-flash-lite",
+                                             "google/gemini-2.5-pro",
+                                             "google/gemma-3-27b-it",
+                                             "google/gemma-3-12b-it",
+                                             "google/gemma-4-31b-it:free",
+                                             "google/gemma-4-26b-a4b-it:free",
+                                             "openai/gpt-4o",
+                                             "openai/gpt-4o-mini",
+                                             "openai/gpt-oss-120b:free",
+                                             "openai/gpt-oss-20b:free",
+                                             "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+                                             "nvidia/nemotron-3-super-120b-a12b:free",
+                                             "nvidia/nemotron-3-ultra-550b-a55b:free",
+                                             "claude-opus-4-6",
+                                             "claude-sonnet-4-6",
+                                             "claude-haiku-3-5",
+                                             "qwen2.5:7b",
+                                             "llama3.1:8b",
+                                             "mistral:7b",
+                                             "auto",
+                                         ], state="normal", font=FONT)
+        self.model_combo.pack(side="left", fill="x", expand=True)
 
         # ── Section: Input type tabs
         self._section(parent, "📥  Input Source")
@@ -248,8 +273,17 @@ class Html2MCQApp(tk.Tk):
                  font=FONT, bg=CARD, fg=TEXT_DIM).pack(side="left")
         self.ocr_model_var = tk.StringVar(value="pytesseract")
         ocr_combo = ttk.Combobox(row_ocr, textvariable=self.ocr_model_var,
-                                  values=["pytesseract", "vision_api"],
-                                  state="readonly", font=FONT)
+                                  values=[
+                                      "pytesseract",
+                                      "auto",
+                                      "vision_api",
+                                      "google/gemini-2.5-flash-lite",
+                                      "google/gemma-3-27b-it",
+                                      "google/gemma-3-12b-it",
+                                      "openai/gpt-4o",
+                                      "openai/gpt-4o-mini",
+                                  ],
+                                  state="normal", font=FONT)
         ocr_combo.pack(side="left", fill="x", expand=True)
 
         # Custom instructions

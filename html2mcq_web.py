@@ -135,7 +135,31 @@ input::placeholder,textarea::placeholder{color:#555}
       </div>
       <div class="row">
         <label>Model</label>
-        <input type="text" id="model" value="meta-llama/llama-3.3-70b-instruct:free">
+        <input type="text" id="model" value="meta-llama/llama-3.3-70b-instruct:free" list="mcqModelList">
+        <datalist id="mcqModelList">
+          <option value="meta-llama/llama-3.3-70b-instruct:free">
+          <option value="meta-llama/llama-3.3-70b-instruct">
+          <option value="google/gemini-2.5-flash-lite">
+          <option value="google/gemini-2.5-pro">
+          <option value="google/gemma-3-27b-it">
+          <option value="google/gemma-3-12b-it">
+          <option value="google/gemma-4-31b-it:free">
+          <option value="google/gemma-4-26b-a4b-it:free">
+          <option value="openai/gpt-4o">
+          <option value="openai/gpt-4o-mini">
+          <option value="openai/gpt-oss-120b:free">
+          <option value="openai/gpt-oss-20b:free">
+          <option value="nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free">
+          <option value="nvidia/nemotron-3-super-120b-a12b:free">
+          <option value="nvidia/nemotron-3-ultra-550b-a55b:free">
+          <option value="claude-opus-4-6">
+          <option value="claude-sonnet-4-6">
+          <option value="claude-haiku-3-5">
+          <option value="qwen2.5:7b">
+          <option value="llama3.1:8b">
+          <option value="mistral:7b">
+          <option value="auto">
+        </datalist>
       </div>
     </div>
 
@@ -211,10 +235,17 @@ input::placeholder,textarea::placeholder{color:#555}
       </div>
       <div class="row">
         <label>OCR model</label>
-        <select id="ocrModel">
-          <option value="pytesseract">pytesseract</option>
-          <option value="vision_api">vision_api</option>
-        </select>
+        <input type="text" id="ocrModel" value="pytesseract" list="ocrModelList">
+        <datalist id="ocrModelList">
+          <option value="pytesseract">
+          <option value="auto">
+          <option value="vision_api">
+          <option value="google/gemini-2.5-flash-lite">
+          <option value="google/gemma-3-27b-it">
+          <option value="google/gemma-3-12b-it">
+          <option value="openai/gpt-4o">
+          <option value="openai/gpt-4o-mini">
+        </datalist>
       </div>
       <label style="display:block;margin:6px 0 4px;min-width:auto">Custom instructions</label>
       <textarea id="customInstructions" rows="3" style="resize:vertical">e.g. Make answers very close and confusing. Only people with sharp attention should get 100%. Avoid straightforward questions.</textarea>
@@ -260,7 +291,13 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 document.querySelectorAll('input[name="provider"]').forEach(rb => {
   rb.addEventListener('change', () => {
     const map = { anthropic: 'claude-opus-4-6', openai: 'gpt-4o', openrouter: 'meta-llama/llama-3.3-70b-instruct:free' };
-    document.getElementById('model').value = map[rb.value] || '';
+    const modelInput = document.getElementById('model');
+    const dl = document.getElementById('mcqModelList');
+    // Show/hide relevant options based on provider
+    const show = { anthropic: ['claude-opus-4-6','claude-sonnet-4-6','claude-haiku-3-5'],
+                   openai: ['openai/gpt-4o','openai/gpt-4o-mini','openai/gpt-oss-120b:free','openai/gpt-oss-20b:free'],
+                   openrouter: Array.from(dl.options).map(o => o.value) };
+    modelInput.value = map[rb.value] || '';
   });
 });
 
