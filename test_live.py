@@ -17,7 +17,6 @@ python test_live.py
 
 # Run specific test:
 python test_live.py --test html
-python test_live.py --test video
 python test_live.py --test pdf_url
 python test_live.py --test pdf_file
 python test_live.py --test url
@@ -25,7 +24,6 @@ python test_live.py --test url
 # Options:
 python test_live.py --provider anthropic --n 5
 python test_live.py --provider openrouter --model meta-llama/llama-3.3-70b-instruct:free
-python test_live.py --docling-url http://your-vps:5001
 """
 
 import os
@@ -109,14 +107,13 @@ def test_from_html(gen, n):
       <tr><td>reduce()</td><td>No</td><td>Accumulated value</td></tr>
     </table>
     <img src="https://javascript.info/article/array/array.svg" alt="Array index diagram showing positions 0,1,2">
-    <a href="https://www.youtube.com/watch?v=oigfaZ5ApsM">Watch: JavaScript Arrays in 10 Minutes</a>
     <a href="https://example.com/js-cheatsheet.pdf">Download JS Arrays Cheat Sheet</a>
     </body></html>
     """
 
-    info(f"Generating {n} MCQs from inline HTML (6 content types)...")
+    info(f"Generating {n} MCQs from inline HTML (5 content types)...")
     t = time.time()
-    mcq = gen.from_html(HTML, n=n, base_url="https://example.com/", enrich_videos=False, enrich_pdfs=False)
+    mcq = gen.from_html(HTML, n=n, base_url="https://example.com/", enrich_pdfs=False)
     elapsed = time.time() - t
     info(f"Completed in {elapsed:.1f}s")
     info(f"Content summary: {mcq.content_summary}")
@@ -125,26 +122,8 @@ def test_from_html(gen, n):
     return mcq
 
 
-def test_from_video_url(gen, n):
-    header("TEST 2: from_video_url — YouTube transcript")
-
-    url = "https://www.youtube.com/watch?v=VXU4LSAQDSc"
-    info(f"Fetching transcript and generating {n} MCQs from: {url}")
-    t = time.time()
-    try:
-        mcq = gen.from_video_url(url, n=n, video_title="Grammarly AI Tutorial")
-        elapsed = time.time() - t
-        info(f"Completed in {elapsed:.1f}s")
-        assert_mcqset(mcq, n, "from_video_url")
-        print(mcq.to_pretty_str())
-        return mcq
-    except Exception as e:
-        warn(f"Video test skipped: {e}")
-        return None
-
-
 def test_from_pdf_url(gen, n, pdf_url=None):
-    header("TEST 3: from_pdf_url — PDF via URL")
+    header("TEST 2: from_pdf_url — PDF via URL")
 
     url = pdf_url or "https://www.w3.org/WAI/WCAG21/wcag21.pdf"
     info(f"Downloading and extracting PDF: {url}")
@@ -162,7 +141,7 @@ def test_from_pdf_url(gen, n, pdf_url=None):
 
 
 def test_from_pdf_file(gen, n):
-    header("TEST 4: from_pdf_path — local PDF file")
+    header("TEST 3: from_pdf_path — local PDF file")
 
     # Create a temporary PDF using PyMuPDF
     try:
@@ -232,13 +211,13 @@ Flask also supports abort() to raise HTTP errors programmatically.
 
 
 def test_from_url(gen, n):
-    header("TEST 5: from_url — live web page")
+    header("TEST 4: from_url — live web page")
 
     url = "https://en.wikipedia.org/wiki/Python_(programming_language)"
     info(f"Fetching live page: {url}")
     t = time.time()
     try:
-        mcq = gen.from_url(url, n=n, enrich_videos=False, enrich_pdfs=False)
+        mcq = gen.from_url(url, n=n, enrich_pdfs=False)
         elapsed = time.time() - t
         info(f"Completed in {elapsed:.1f}s — {mcq.content_summary}")
         assert_mcqset(mcq, n, "from_url")
@@ -272,13 +251,12 @@ def test_filters_and_export(mcq, label=""):
 
 def main():
     parser = argparse.ArgumentParser(description="html2mcq live integration tests")
-    parser.add_argument("--test", choices=["html","video","pdf_url","pdf_file","url","all"], default="all")
+    parser.add_argument("--test", choices=["html","pdf_url","pdf_file","url","all"], default="all")
     parser.add_argument("--provider", default="openrouter", choices=["anthropic","openai","openrouter"])
     parser.add_argument("--model", default="meta-llama/llama-3.3-70b-instruct:free")
     parser.add_argument("--api-key", default="")
     parser.add_argument("--n", type=int, default=5, help="Questions per test (default 5)")
     parser.add_argument("--pdf-url", default="", help="Custom PDF URL for pdf_url test")
-    parser.add_argument("--docling-url", default="", help="Docling Serve URL e.g. http://localhost:5001")
     args = parser.parse_args()
 
     # Resolve API key
@@ -292,8 +270,6 @@ def main():
     print(f"  Provider : {args.provider}")
     print(f"  Model    : {args.model}")
     print(f"  Questions: {args.n} per test")
-    if args.docling_url:
-        print(f"  Docling  : {args.docling_url}")
 
     from html2mcq import MCQGenerator
     gen = MCQGenerator(
@@ -301,7 +277,6 @@ def main():
         provider=args.provider,
         model=args.model,
         pdf_backend="pymupdf",
-        docling_api_url=args.docling_url,
     )
 
     results = {}
@@ -315,18 +290,6 @@ def main():
         except Exception as e:
             fail(f"from_html FAILED: {e}")
             results["html"] = f"FAIL: {e}"
-
-    if run in ("video", "all"):
-        try:
-            mcq = test_from_video_url(gen, args.n)
-            if mcq:
-                test_filters_and_export(mcq, "Video")
-                results["video"] = "PASS"
-            else:
-                results["video"] = "SKIP"
-        except Exception as e:
-            fail(f"from_video_url FAILED: {e}")
-            results["video"] = f"FAIL: {e}"
 
     if run in ("pdf_url", "all"):
         try:

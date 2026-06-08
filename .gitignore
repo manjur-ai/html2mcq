@@ -37,3 +37,19 @@ Thumbs.db
 
 # Docling models cache
 ~/.cache/docling/
+
+# Debug / scratch files
+_debug_*.py
+_probe*.py
+debug_*.py
+loop_log.txt
+loop_err.txt
+prompt_dump.txt
+ocr_*.txt
+tpoint_*.txt
+*_output.json
+mcq_output.json
+cookbook_mcqs.json
+
+# Test images
+WhatsApp Image *.jpeg

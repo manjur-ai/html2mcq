@@ -1,6 +1,6 @@
 """
 ContentExtractor: Parses HTML tutorial pages and extracts text, images,
-video links, PDF links, code blocks, and tables into structured ContentBlocks.
+    PDF links, code blocks, and tables into structured ContentBlocks.
 """
 from __future__ import annotations
 
@@ -21,17 +21,6 @@ except ImportError:
 
 # ── URL helpers ───────────────────────────────────────────────────────────────
 
-VIDEO_PATTERNS = [
-    r"youtube\.com/watch",
-    r"youtu\.be/",
-    r"vimeo\.com/",
-    r"dailymotion\.com/",
-    r"twitch\.tv/",
-    r"\.mp4$",
-    r"\.webm$",
-    r"\.ogg$",
-]
-
 PDF_PATTERNS = [
     r"\.pdf($|\?)",
     r"drive\.google\.com.*pdf",
@@ -40,9 +29,41 @@ PDF_PATTERNS = [
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp", ".tiff"}
 
+AD_CLASS_IDS = re.compile(
+    r"\b(ads?|advertisement|advert|sponsor(ed)?|promo(tion)?"
+    r"|banner|affiliate|marketing|promotional"
+    r"|sidebar-ad|top-ad|bottom-ad|leaderboard|popup)\b",
+    re.I,
+)
 
-def _is_video_url(url: str) -> bool:
-    return any(re.search(p, url, re.IGNORECASE) for p in VIDEO_PATTERNS)
+BOILERPLATE_CLASS_IDS = re.compile(
+    r"\b(banner|sidebar\b|sidenav|leftmenu|topnav|navbar"
+    r"|navigation|footer|cookie|consent|side\b"
+    r"|toc|reading|chapters)",
+    re.I,
+)
+
+AD_URL_PATTERNS = re.compile(
+    r"(?:doubleclick|googleads|adservice|adnxs|adsrv|"
+    r"adtech|adzerk|scorecardresearch|quantserve|"
+    r"moatads|outbrain|taboola|casalemedia)\.",
+    re.I,
+)
+
+DECORATIVE_IMAGE_PATTERNS = re.compile(
+    r"(?:logo|icon|favicon|avatar|spacer|pixel|sprite|"
+    r"banner|thumb|thumbnail)",
+    re.I,
+)
+
+AD_ALT_TEXTS = re.compile(
+    r"\b(advertisement|sponsor(ed)?|promo(tion)?|"
+    r"ads?|logo|get.*certified|certification\s+offer|"
+    r"buy\s+now|shop\s+now|special\s+offer|limited\s+time)\b",
+    re.I,
+)
+
+CODE_CONTAINER_CLASS = re.compile(r"\b(w3-code|code-container|code-block|code-snippet|code-example|source-code)\b", re.I)
 
 
 def _is_pdf_url(url: str) -> bool:
@@ -83,7 +104,6 @@ class ContentExtractor:
         self,
         min_text_length: int = 40,
         include_images: bool = True,
-        include_videos: bool = True,
         include_pdfs: bool = True,
         include_code: bool = True,
         include_tables: bool = True,
@@ -97,7 +117,6 @@ class ContentExtractor:
             )
         self.min_text_length = min_text_length
         self.include_images = include_images
-        self.include_videos = include_videos
         self.include_pdfs = include_pdfs
         self.include_code = include_code
         self.include_tables = include_tables
@@ -113,6 +132,32 @@ class ContentExtractor:
         html = self._fetch(url)
         return self.from_html(html, base_url=url)
 
+    @staticmethod
+    def _find_main_content(soup) -> Optional[Tag]:
+        """Try to locate the primary content container by common selectors."""
+        selectors = [
+            "article",
+            "main",
+            "[role=main]",
+            ".post-content",
+            ".entry-content",
+            ".article-content",
+            ".article-body",
+            ".entry-body",
+            ".tutorial-content",
+            ".content",
+        ]
+        best = None
+        best_len = 0
+        for sel in selectors:
+            el = soup.select_one(sel)
+            if el:
+                length = len(el.get_text(strip=True))
+                if length > best_len:
+                    best = el
+                    best_len = length
+        return best if best_len > 50 else None
+
     def from_html(
         self, html: str, base_url: str = ""
     ) -> Tuple[str, List[ContentBlock]]:
@@ -122,17 +167,39 @@ class ContentExtractor:
         """
         soup = BeautifulSoup(html, "lxml" if self._lxml_available() else "html.parser")
 
+        # Remove headerlink anchors (e.g. <a class="headerlink">#</a>) that leak into heading text
+        for tag in soup.select("a.headerlink"):
+            tag.decompose()
+
         # Remove boilerplate tags
         for tag in soup(self.SKIP_TAGS):
             tag.decompose()
 
+        # Remove ad & boilerplate containers (skip elements that contain main content)
+        for tag in soup.find_all(True):
+            if not isinstance(tag, Tag) or tag.name is None or tag.name.lower() in ("html", "body"):
+                continue
+            # Don't decompose containers that hold the primary article/main content
+            if tag.find(["article", "main"]) or tag.select_one("[role=main]"):
+                continue
+            id_ = tag.get("id", "")
+            if id_ and BOILERPLATE_CLASS_IDS.search(id_):
+                tag.decompose()
+                continue
+            for cls in tag.get("class", []):
+                if cls and BOILERPLATE_CLASS_IDS.search(cls):
+                    tag.decompose()
+                    break
+
         title = self._extract_title(soup)
         blocks: List[ContentBlock] = []
         seen_urls: set = set()
+        seen_codes: set = set()
 
         # Walk the DOM in document order
-        body = soup.find("body") or soup
-        self._walk(body, base_url, blocks, seen_urls)
+        main_content = self._find_main_content(soup)
+        root = main_content if main_content else (soup.find("body") or soup)
+        self._walk(root, base_url, blocks, seen_urls, seen_codes, page_title=title)
 
         return title, blocks
 
@@ -168,12 +235,31 @@ class ContentExtractor:
             return title_tag.get_text(strip=True)
         return "Untitled Page"
 
+    @staticmethod
+    def _is_ad_element(tag) -> bool:
+        if tag.get("id") and AD_CLASS_IDS.search(tag["id"]):
+            return True
+        for cls in tag.get("class", []):
+            if AD_CLASS_IDS.search(cls):
+                return True
+        parent = tag.parent
+        while parent and parent.name:
+            if parent.get("id") and AD_CLASS_IDS.search(parent["id"]):
+                return True
+            for cls in parent.get("class", []):
+                if AD_CLASS_IDS.search(cls):
+                    return True
+            parent = parent.parent
+        return False
+
     def _walk(
         self,
         node,
         base_url: str,
         blocks: List[ContentBlock],
         seen_urls: set,
+        seen_codes: set,
+        page_title: str = "",
     ):
         for child in node.children:
             if not hasattr(child, "name") or child.name is None:
@@ -192,45 +278,18 @@ class ContentExtractor:
                 if src:
                     abs_src = _absolute_url(base_url, src)
                     if abs_src not in seen_urls:
-                        seen_urls.add(abs_src)
-                        blocks.append(ContentBlock(
-                            type="image",
-                            content=abs_src,
-                            alt_text=tag.get("alt", ""),
-                            caption=tag.get("title", ""),
-                        ))
-                continue
-
-            # ── <video> ──
-            if name == "video" and self.include_videos:
-                src = tag.get("src", "")
-                source_tag = tag.find("source")
-                if not src and source_tag:
-                    src = source_tag.get("src", "")
-                if src:
-                    abs_src = _absolute_url(base_url, src)
-                    if abs_src not in seen_urls:
-                        seen_urls.add(abs_src)
-                        blocks.append(ContentBlock(
-                            type="video",
-                            content=abs_src,
-                            caption=tag.get("title", ""),
-                        ))
-                continue
-
-            # ── <iframe> (YouTube / Vimeo embeds) ──
-            if name == "iframe" and self.include_videos:
-                src = tag.get("src", "")
-                if src and _is_video_url(src):
-                    abs_src = _absolute_url(base_url, src)
-                    if abs_src not in seen_urls:
-                        seen_urls.add(abs_src)
-                        blocks.append(ContentBlock(
-                            type="video",
-                            content=abs_src,
-                            caption=tag.get("title", ""),
-                            metadata={"embed": True},
-                        ))
+                        alt = tag.get("alt", "")
+                        if (not self._is_ad_element(tag) and not AD_ALT_TEXTS.search(alt)
+                                and not AD_URL_PATTERNS.search(abs_src)
+                                and not DECORATIVE_IMAGE_PATTERNS.search(abs_src)
+                                and alt.strip().lower() != page_title.strip().lower()):
+                            seen_urls.add(abs_src)
+                            blocks.append(ContentBlock(
+                                type="image",
+                                content=abs_src,
+                                alt_text=alt,
+                                caption=tag.get("title", ""),
+                            ))
                 continue
 
             # ── Anchors ──
@@ -239,21 +298,14 @@ class ContentExtractor:
                 if href:
                     abs_href = _absolute_url(base_url, href)
                     if abs_href not in seen_urls:
-                        if self.include_pdfs and _is_pdf_url(abs_href):
+                        if self.include_pdfs and _is_pdf_url(abs_href) and not self._is_ad_element(tag) and not AD_URL_PATTERNS.search(abs_href):
                             seen_urls.add(abs_href)
                             blocks.append(ContentBlock(
                                 type="pdf",
                                 content=abs_href,
                                 alt_text=tag.get_text(strip=True),
                             ))
-                        elif self.include_videos and _is_video_url(abs_href):
-                            seen_urls.add(abs_href)
-                            blocks.append(ContentBlock(
-                                type="video",
-                                content=abs_href,
-                                alt_text=tag.get_text(strip=True),
-                            ))
-                        elif self.include_images and _is_image_url(abs_href):
+                        elif self.include_images and _is_image_url(abs_href) and not self._is_ad_element(tag) and not AD_ALT_TEXTS.search(tag.get_text(strip=True)) and not AD_URL_PATTERNS.search(abs_href) and not DECORATIVE_IMAGE_PATTERNS.search(abs_href):
                             seen_urls.add(abs_href)
                             blocks.append(ContentBlock(
                                 type="image",
@@ -261,10 +313,10 @@ class ContentExtractor:
                                 alt_text=tag.get_text(strip=True),
                             ))
                 # Still recurse into <a> for nested text / images
-                self._walk(tag, base_url, blocks, seen_urls)
+                self._walk(tag, base_url, blocks, seen_urls, seen_codes, page_title)
                 continue
 
-            # ── Code blocks ──
+            # ── Code blocks (including common code container divs) ──
             if name in ("pre", "code") and self.include_code:
                 code_text = tag.get_text()
                 if len(code_text.strip()) >= 10:
@@ -279,6 +331,18 @@ class ContentExtractor:
                         metadata={"language": lang},
                     ))
                 continue
+
+            # ── Code container divs (e.g. <div class="w3-code">) ──
+            if name == "div" and self.include_code:
+                cls = tag.get("class", [])
+                if any(CODE_CONTAINER_CLASS.search(c) for c in cls):
+                    code_text = tag.get_text()
+                    if len(code_text.strip()) >= 10:
+                        blocks.append(ContentBlock(
+                            type="code",
+                            content=code_text,
+                        ))
+                    continue
 
             # ── Tables ──
             if name == "table" and self.include_tables:
@@ -296,7 +360,18 @@ class ContentExtractor:
                 continue
 
             # ── Headings & text-bearing elements ──
-            if name in ("h1","h2","h3","h4","h5","h6","p","li","blockquote","figcaption","td","th","dt","dd","summary","details"):
+            if name in ("h1","h2","h3","h4","h5","h6","p","li","blockquote","figcaption","td","th","dt","dd"):
+                # Extract any inline <code> elements first
+                if self.include_code:
+                    for inline_code in tag.find_all("code"):
+                        code_text = inline_code.get_text()
+                        # Require longer text for inline code to avoid class-name noise
+                        if len(code_text.strip()) >= 25 and code_text.strip() not in seen_codes:
+                            seen_codes.add(code_text.strip())
+                            blocks.append(ContentBlock(
+                                type="code",
+                                content=code_text,
+                            ))
                 text = tag.get_text(" ", strip=True)
                 if len(text) >= self.min_text_length:
                     blocks.append(ContentBlock(
@@ -308,4 +383,4 @@ class ContentExtractor:
                 continue
 
             # ── Recurse into containers ──
-            self._walk(tag, base_url, blocks, seen_urls)
+            self._walk(tag, base_url, blocks, seen_urls, seen_codes, page_title)

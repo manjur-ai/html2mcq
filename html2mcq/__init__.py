@@ -1,20 +1,20 @@
 """
-html2mcq - Convert any HTML tutorial page, YouTube video, or PDF into MCQ questions using AI.
+html2mcq - Convert any HTML tutorial page, PDF, or image into MCQ questions using AI.
 """
 
 from .generator import MCQGenerator
 from .extractor import ContentExtractor
-from .video import VideoTranscriptExtractor
 from .pdf import PDFExtractor
+from .image_ocr import ImageOCRExtractor
 from .models import MCQQuestion, MCQSet, ContentBlock
 
-__version__ = "1.2.0"
+__version__ = "2.0.0"
 __author__ = "html2mcq"
 __all__ = [
     "MCQGenerator",
     "ContentExtractor",
-    "VideoTranscriptExtractor",
     "PDFExtractor",
+    "ImageOCRExtractor",
     "MCQQuestion",
     "MCQSet",
     "ContentBlock",

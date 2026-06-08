@@ -87,8 +87,7 @@ SAMPLE_HTML = """
   <h1>Learn Python</h1>
   <p>Python is a high-level programming language known for its simplicity and readability.</p>
   <p>It supports object-oriented, functional, and procedural programming paradigms.</p>
-  <img src="/images/python-logo.png" alt="Python Logo" title="Official Python Logo">
-  <a href="https://www.youtube.com/watch?v=abc123">Watch Python Tutorial Video</a>
+  <img src="/images/python.png" alt="Python" title="Python">
   <a href="/resources/python-cheatsheet.pdf">Download Python Cheatsheet PDF</a>
   <pre><code class="language-python">
 def hello():
@@ -119,13 +118,7 @@ class TestContentExtractor:
         _, blocks = self.extractor.from_html(SAMPLE_HTML, "https://example.com/")
         imgs = [b for b in blocks if b.type == "image"]
         assert len(imgs) == 1
-        assert imgs[0].alt_text == "Python Logo"
-
-    def test_extracts_video(self):
-        _, blocks = self.extractor.from_html(SAMPLE_HTML, "https://example.com/")
-        vids = [b for b in blocks if b.type == "video"]
-        assert len(vids) == 1
-        assert "youtube" in vids[0].content
+        assert imgs[0].alt_text == "Python"
 
     def test_extracts_pdf(self):
         _, blocks = self.extractor.from_html(SAMPLE_HTML, "https://example.com/")
@@ -157,9 +150,23 @@ class TestContentExtractor:
 
     def test_include_flags(self):
         extractor = ContentExtractor(min_text_length=10, include_images=False,
-                                     include_videos=False, include_pdfs=False)
+                                     include_pdfs=False)
         _, blocks = extractor.from_html(SAMPLE_HTML, "https://example.com/")
-        assert all(b.type not in ("image", "video", "pdf") for b in blocks)
+        assert all(b.type not in ("image", "pdf") for b in blocks)
+
+    def test_filters_ad_images_by_alt_text(self):
+        html = '<html><body><img src="/logo.png" alt="Get Certified Offer"><img src="/real.png" alt="Python Data Types"></body></html>'
+        _, blocks = self.extractor.from_html(html, "https://example.com/")
+        imgs = [b for b in blocks if b.type == "image"]
+        assert len(imgs) == 1
+        assert imgs[0].content.endswith("/real.png")
+
+    def test_filters_ad_images_by_class(self):
+        html = '<html><body><div class="ad"><img src="/ad.png" alt="ad"></div><img src="/good.png" alt="good"></body></html>'
+        _, blocks = self.extractor.from_html(html, "https://example.com/")
+        imgs = [b for b in blocks if b.type == "image"]
+        assert len(imgs) == 1
+        assert imgs[0].content.endswith("/good.png")
 
 
 # ── Prompts ───────────────────────────────────────────────────────────────────
@@ -169,7 +176,6 @@ class TestPrompts:
         return [
             ContentBlock(type="text", content="Python is a programming language.", metadata={"tag": "p"}),
             ContentBlock(type="image", content="https://example.com/img.png", alt_text="diagram"),
-            ContentBlock(type="video", content="https://youtube.com/watch?v=123", alt_text="Tutorial"),
             ContentBlock(type="pdf", content="https://example.com/guide.pdf", alt_text="PDF Guide"),
             ContentBlock(type="code", content='print("hello")', metadata={"language": "python"}),
         ]
@@ -186,7 +192,6 @@ class TestPrompts:
         up = build_user_prompt(self._sample_blocks(), n=5, page_title="Test")
         assert "TEXT CONTENT" in up
         assert "IMAGES" in up
-        assert "VIDEOS" in up
         assert "PDF" in up
         assert "CODE" in up
         assert "5" in up
@@ -221,20 +226,24 @@ MOCK_RESPONSE = json.dumps([
 class TestMCQGenerator:
     def _make_gen(self):
         from html2mcq import MCQGenerator
-        from html2mcq.video import VideoTranscriptExtractor
         from html2mcq.pdf import PDFExtractor
         gen = MCQGenerator.__new__(MCQGenerator)
         gen.provider = "openrouter"
+        gen.mcq_model = ""
+        gen.mcq_model_list = None
         gen.batch_size = 10
         gen.max_tokens = 4096
         gen.extractor = ContentExtractor(min_text_length=10)
-        gen.transcript_extractor = VideoTranscriptExtractor()
         gen.pdf_extractor = PDFExtractor(backend="pymupdf")
         gen.custom_instructions = ""
+        gen.method = "twostep"
         mock = MagicMock()
         mock.complete.return_value = MOCK_RESPONSE
-        mock.model = "llama-3.3-70b"
+        mock.mcq_model = "llama-3.3-70b"
         gen.backend = mock
+        from html2mcq.image_ocr import ImageOCRExtractor
+        gen.image_ocr_extractor = ImageOCRExtractor(backend="pytesseract")
+        gen.image_ocr_extractor.enrich_blocks = lambda blocks, **kw: blocks
         return gen
 
     def test_returns_mcqset(self):
@@ -299,232 +308,70 @@ class TestMCQGenerator:
         with pytest.raises(ValueError, match="Unknown provider"):
             MCQGenerator(api_key="fake", provider="fakeprovider")
 
-
-# ── VideoTranscriptExtractor ──────────────────────────────────────────────────
-
-class TestVideoTranscriptExtractor:
-    def setup_method(self):
-        from html2mcq.video import VideoTranscriptExtractor
-        self.vte = VideoTranscriptExtractor(chunk_size=200, chunk_overlap=20)
-
-    def test_extract_video_id(self):
-        from html2mcq.video import extract_video_id
-        assert extract_video_id("https://www.youtube.com/watch?v=VXU4LSAQDSc") == "VXU4LSAQDSc"
-        assert extract_video_id("https://youtu.be/VXU4LSAQDSc") == "VXU4LSAQDSc"
-        assert extract_video_id("https://www.youtube.com/embed/VXU4LSAQDSc") == "VXU4LSAQDSc"
-        assert extract_video_id("https://www.youtube.com/shorts/VXU4LSAQDSc") == "VXU4LSAQDSc"
-        assert extract_video_id("https://example.com/page") is None
-
-    def test_is_youtube_url(self):
-        from html2mcq.video import is_youtube_url
-        assert is_youtube_url("https://www.youtube.com/watch?v=abc12345678") is True
-        assert is_youtube_url("https://youtu.be/abc12345678") is True
-        assert is_youtube_url("https://vimeo.com/123456") is False
-        assert is_youtube_url("https://example.com") is False
-
-    def test_from_text_produces_blocks(self):
-        transcript = (
-            "Grammarly is an AI writing assistant that helps you write clearly. "
-            "It checks grammar, spelling, punctuation, and style. "
-            "You can use it in your browser, desktop app, or mobile keyboard. "
-            "The AI suggests improvements in real time as you type. "
-            "It also detects tone — whether your message sounds friendly or formal."
-        )
-        blocks = self.vte.from_text(transcript, source_url="https://youtube.com/watch?v=test", video_title="Grammarly Demo")
-        assert len(blocks) >= 1
-        assert all(b.type == "transcript" for b in blocks)
-        assert all("chunk_index" in b.metadata for b in blocks)
-        assert blocks[0].caption == "Grammarly Demo"
-
-    def test_chunking_respects_size(self):
-        long_text = "This is a sentence about AI writing tools. " * 30
-        blocks = self.vte.from_text(long_text)
-        for b in blocks:
-            # Allow some slack for sentence boundary splitting
-            assert len(b.content) <= self.vte.chunk_size + 50
-
-    def test_chunking_overlap(self):
-        from html2mcq.video import VideoTranscriptExtractor
-        vte = VideoTranscriptExtractor(chunk_size=100, chunk_overlap=30)
-        text = "word " * 100  # 500 chars
-        blocks = vte.from_text(text)
-        assert len(blocks) >= 2
-
-    def test_enrich_blocks_replaces_youtube(self):
-        """Enrich should attempt transcript fetch; on failure keeps original block."""
-        from html2mcq.models import ContentBlock
-        from html2mcq.video import VideoTranscriptExtractor
-        from unittest.mock import patch, MagicMock
-
-        vte = VideoTranscriptExtractor()
-        blocks = [
-            ContentBlock(type="text", content="Some tutorial text about writing.", metadata={"tag": "p"}),
-            ContentBlock(type="video", content="https://www.youtube.com/watch?v=VXU4LSAQDSc", alt_text="Grammarly AI"),
-            ContentBlock(type="image", content="https://example.com/img.png"),
-        ]
-
-        mock_transcript_blocks = [
-            ContentBlock(type="transcript", content="Grammarly helps you write better.", metadata={"chunk_index": 0, "total_chunks": 1, "video_id": "VXU4LSAQDSc", "approx_timestamp": "00:00", "source": "youtube_transcript", "source_url": "https://www.youtube.com/watch?v=VXU4LSAQDSc", "char_count": 35}),
-        ]
-
-        with patch.object(vte, "from_url", return_value=mock_transcript_blocks):
-            enriched = vte.enrich_blocks(blocks)
-
-        assert len(enriched) == 3  # text + transcript + image
-        assert enriched[1].type == "transcript"
-        assert "Grammarly" in enriched[1].content
-
-    def test_enrich_blocks_keeps_non_youtube_videos(self):
-        from html2mcq.models import ContentBlock
-        from html2mcq.video import VideoTranscriptExtractor
-
-        vte = VideoTranscriptExtractor()
-        blocks = [
-            ContentBlock(type="video", content="https://vimeo.com/123456789", alt_text="Vimeo video"),
-        ]
-        enriched = vte.enrich_blocks(blocks)
-        # Vimeo is not YouTube — should be kept as-is
-        assert len(enriched) == 1
-        assert enriched[0].type == "video"
-
-    def test_from_url_raises_on_non_youtube(self):
-        from html2mcq.video import VideoTranscriptExtractor
-        vte = VideoTranscriptExtractor()
-        with pytest.raises(ValueError, match="Not a recognised YouTube URL"):
-            vte.from_url("https://vimeo.com/123456")
-
-    def test_max_duration_filters_segments(self):
-        from html2mcq.video import VideoTranscriptExtractor
-        vte = VideoTranscriptExtractor(max_duration=30)
-        segments = [
-            {"text": "Hello world", "start": 5.0, "duration": 2.0},
-            {"text": "This is AI", "start": 20.0, "duration": 2.0},
-            {"text": "Beyond limit", "start": 60.0, "duration": 2.0},
-        ]
-        _, timed_chunks = vte._process_segments(segments)
-        combined = " ".join(c for c, _ in timed_chunks)
-        assert "Beyond limit" not in combined
-
-    def test_timestamps_preserved_when_enabled(self):
-        from html2mcq.video import VideoTranscriptExtractor
-        vte = VideoTranscriptExtractor(preserve_timestamps=True, chunk_size=500)
-        segments = [
-            {"text": "Hello world", "start": 65.0, "duration": 2.0},
-            {"text": "This is a test", "start": 130.0, "duration": 2.0},
-        ]
-        full_text, _ = vte._process_segments(segments)
-        assert "[01:05]" in full_text
-        assert "[02:10]" in full_text
-
-
-# ── MCQGenerator with video (mocked transcript) ───────────────────────────────
-
-MOCK_TRANSCRIPT_RESPONSE = json.dumps([
-    {
-        "question_html": "What does Grammarly primarily help users with?",
-        "options": ["Video editing", "Writing clearly and correctly", "Spreadsheet formatting", "Code debugging"],
-        "answers": [1],
-        "multi": False,
-        "marks": 1,
-        "negative_marks": 0.25,
-        "difficulty": "easy",
-        "explaination": "Grammarly is an AI writing assistant focused on grammar, spelling, punctuation and style.",
-    },
-    {
-        "question_html": "Which of the following are platforms where Grammarly is available?",
-        "options": ["Browser extension", "Desktop app", "Mobile keyboard", "Smart TV"],
-        "answers": [0, 1, 2],
-        "multi": True,
-        "marks": 1,
-        "negative_marks": 0,
-        "difficulty": "medium",
-        "explaination": "Grammarly works as a browser extension, desktop app, and mobile keyboard — but not on Smart TVs.",
-    },
-])
-
-
-class TestMCQGeneratorVideo:
-    def _make_gen(self):
+    def test_ocr_model_pytesseract(self):
+        import os
         from html2mcq import MCQGenerator
-        from html2mcq.video import VideoTranscriptExtractor
-        gen = MCQGenerator.__new__(MCQGenerator)
-        gen.provider = "openrouter"
-        gen.batch_size = 10
-        gen.max_tokens = 4096
-        gen.extractor = ContentExtractor(min_text_length=10)
-        gen.transcript_extractor = VideoTranscriptExtractor(chunk_size=300)
-        gen.custom_instructions = ""
-        mock = MagicMock()
-        mock.complete.return_value = MOCK_TRANSCRIPT_RESPONSE
-        mock.model = "llama-3.3-70b"
-        gen.backend = mock
-        return gen
+        old = os.environ.pop("ANTHROPIC_API_KEY", None)
+        try:
+            os.environ["ANTHROPIC_API_KEY"] = "sk-fake"
+            gen = MCQGenerator(provider="anthropic", ocr_model="pytesseract")
+            assert gen.image_ocr_extractor.backend == "pytesseract"
+        finally:
+            if old:
+                os.environ["ANTHROPIC_API_KEY"] = old
+            else:
+                os.environ.pop("ANTHROPIC_API_KEY", None)
 
-    def test_from_video_url_uses_transcript(self):
+    def test_ocr_model_vision_api(self):
+        import os
         from html2mcq import MCQGenerator
-        from html2mcq.video import VideoTranscriptExtractor
-        from unittest.mock import patch
-        from html2mcq.models import ContentBlock
+        old = os.environ.pop("ANTHROPIC_API_KEY", None)
+        try:
+            os.environ["ANTHROPIC_API_KEY"] = "sk-fake"
+            gen = MCQGenerator(provider="anthropic", ocr_model="vision_api")
+            assert gen.image_ocr_extractor.backend == "vision_api"
+        finally:
+            if old:
+                os.environ["ANTHROPIC_API_KEY"] = old
+            else:
+                os.environ.pop("ANTHROPIC_API_KEY", None)
 
-        gen = self._make_gen()
+    def test_ocr_model_arbitrary_model_name(self):
+        """Any string is accepted as a direct model name (no more 'vision_api' abstraction)."""
+        import os
+        from html2mcq import MCQGenerator
+        os.environ["ANTHROPIC_API_KEY"] = "sk-fake"
+        gen = MCQGenerator(provider="anthropic", ocr_model="openai/gpt-4o")
+        assert gen.image_ocr_extractor.backend == "openai/gpt-4o"
+        assert gen.pdf_extractor.scanned_backend == "openai/gpt-4o"
 
-        mock_blocks = [
-            ContentBlock(
-                type="transcript",
-                content="Grammarly is an AI writing assistant. It checks grammar, spelling, punctuation, and style. Available on browser, desktop, and mobile.",
-                metadata={"chunk_index": 0, "total_chunks": 1, "video_id": "VXU4LSAQDSc",
-                          "approx_timestamp": "00:00", "source": "youtube_transcript",
-                          "source_url": "https://youtube.com/watch?v=VXU4LSAQDSc", "char_count": 140},
-            )
-        ]
-        with patch.object(gen.transcript_extractor, "from_url", return_value=mock_blocks):
-            mcq = gen.from_video_url(
-                "https://www.youtube.com/watch?v=VXU4LSAQDSc",
-                n=2,
-                video_title="Grammarly AI Tutorial",
-            )
 
-        assert isinstance(mcq, MCQSet)
-        assert mcq.total_questions == 2
-        assert mcq.page_title == "Grammarly AI Tutorial"
-        assert mcq.source_url == "https://www.youtube.com/watch?v=VXU4LSAQDSc"
 
-    def test_from_url_with_youtube_link_routes_to_video(self):
-        from unittest.mock import patch
-        gen = self._make_gen()
-
-        with patch.object(gen, "from_video_url", return_value=MagicMock()) as mock_fv:
-            gen.from_url("https://www.youtube.com/watch?v=VXU4LSAQDSc", n=5)
-            mock_fv.assert_called_once()
-
-    def test_json_output_from_transcript(self):
-        from html2mcq.models import ContentBlock
-        from unittest.mock import patch
-
-        gen = self._make_gen()
-        mock_blocks = [
-            ContentBlock(type="transcript", content="Grammarly helps you write better with AI.",
-                         metadata={"chunk_index": 0, "total_chunks": 1, "video_id": "abc",
-                                   "approx_timestamp": "00:00", "source": "youtube_transcript",
-                                   "source_url": "https://youtube.com/watch?v=abc", "char_count": 40})
-        ]
-        with patch.object(gen.transcript_extractor, "from_url", return_value=mock_blocks):
-            mcq = gen.from_video_url("https://youtube.com/watch?v=abc", n=2)
-
-        parsed = json.loads(mcq.to_json())
-        assert "total_exam_time" in parsed
-        assert "questions" in parsed
-        assert parsed["questions"][0]["question_html"] != ""
 
 
 # ── PDFExtractor ──────────────────────────────────────────────────────────────
 
 def _make_pdf_bytes(text: str = "Hello PDF world. This is a test document about Python programming.") -> bytes:
-    """Create a minimal valid PDF in memory using PyMuPDF."""
+    """Create a minimal valid PDF in memory using PyMuPDF.
+    
+    Splits text into lines to avoid PyMuPDF's single-line truncation.
+    """
     import fitz
     doc = fitz.open()
     page = doc.new_page()
-    page.insert_text((72, 72), text, fontsize=12)
+    # insert_text truncates at ~90 chars; write line by line
+    words = text.split()
+    line, y = "", 72
+    for w in words:
+        candidate = f"{line} {w}".strip()
+        if len(candidate) > 80:
+            page.insert_text((72, y), line, fontsize=12)
+            y += 14
+            line = w
+        else:
+            line = candidate
+    if line:
+        page.insert_text((72, y), line, fontsize=12)
     return doc.tobytes()
 
 
@@ -550,7 +397,8 @@ class TestPDFExtractor:
         assert "Python" in combined
 
     def test_blocks_have_correct_metadata(self):
-        pdf_bytes = _make_pdf_bytes("Testing metadata fields in extracted PDF blocks.")
+        long_text = "NumPy arrays are homogeneous collections. " * 10
+        pdf_bytes = _make_pdf_bytes(long_text)
         blocks = self.extractor.from_bytes(pdf_bytes, source_url="https://example.com/meta.pdf")
         assert len(blocks) >= 1
         b = blocks[0]
@@ -598,6 +446,66 @@ class TestPDFExtractor:
         assert len(blocks) >= 1
         assert any("Flask" in b.content or "SQLite" in b.content or "Local" in b.content for b in blocks)
 
+    def test_detect_scan_type_text_pdf(self):
+        """A PDF with extractable text should be classified as 'text'."""
+        long_text = "NumPy provides multidimensional arrays. " * 15  # ~375 chars
+        pdf_bytes = _make_pdf_bytes(long_text)
+        result = self.extractor.detect_scan_type(pdf_bytes)
+        assert result == "text", f"Expected 'text', got '{result}'"
+
+    def test_detect_scan_type_scanned_pdf(self):
+        """A PDF with images but no text should be classified as 'scanned'."""
+        import fitz
+        import io
+        from PIL import Image
+        # Create a blank white image and embed it in a PDF page
+        img = Image.new("RGB", (100, 100), color="white")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        img_bytes = buf.getvalue()
+
+        doc = fitz.open()
+        page = doc.new_page()
+        page.insert_image(page.rect, stream=img_bytes)
+        pdf_bytes = doc.tobytes()
+        doc.close()
+
+        result = self.extractor.detect_scan_type(pdf_bytes)
+        assert result == "scanned", f"Expected 'scanned', got '{result}'"
+
+    def test_detect_scan_type_mixed_pdf(self):
+        """A PDF with both text pages and image-only pages should be 'mixed'."""
+        import fitz
+        import io
+        from PIL import Image
+
+        img = Image.new("RGB", (100, 100), color="white")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        img_bytes = buf.getvalue()
+
+        doc = fitz.open()
+        # page 1: text
+        p1 = doc.new_page()
+        p1.insert_text((72, 72), "This page has text content.", fontsize=12)
+        # page 2: scanned (image only)
+        p2 = doc.new_page()
+        p2.insert_image(p2.rect, stream=img_bytes)
+        pdf_bytes = doc.tobytes()
+        doc.close()
+
+        result = self.extractor.detect_scan_type(pdf_bytes)
+        assert result == "mixed", f"Expected 'mixed', got '{result}'"
+
+    def test_detect_scan_type_from_path(self, tmp_path):
+        """detect_scan_type_from_path works with a local file path."""
+        long_text = "NumPy provides multidimensional arrays. " * 15
+        pdf_bytes = _make_pdf_bytes(long_text)
+        pdf_file = tmp_path / "test.pdf"
+        pdf_file.write_bytes(pdf_bytes)
+        result = self.extractor.detect_scan_type_from_path(str(pdf_file))
+        assert result == "text"
+
     def test_enrich_blocks_replaces_pdf_blocks(self):
         from html2mcq.models import ContentBlock
         from html2mcq.pdf import PDFExtractor
@@ -634,11 +542,11 @@ class TestPDFExtractor:
         blocks = [
             ContentBlock(type="text", content="Some text content here.", metadata={"tag": "p"}),
             ContentBlock(type="image", content="https://example.com/img.png"),
-            ContentBlock(type="video", content="https://youtube.com/watch?v=abc"),
+            ContentBlock(type="code", content="print('hello')"),
         ]
         enriched = extractor.enrich_blocks(blocks)
         assert len(enriched) == 3
-        assert all(b.type in ("text", "image", "video") for b in enriched)
+        assert all(b.type in ("text", "image", "code") for b in enriched)
 
     def test_enrich_blocks_handles_download_failure(self):
         from html2mcq.models import ContentBlock
@@ -657,48 +565,17 @@ class TestPDFExtractor:
         assert len(enriched) == 1
         assert enriched[0].type == "pdf"
 
-    def test_fallback_triggered_on_empty_text(self):
-        """When PyMuPDF returns empty text, Docling fallback should be attempted."""
-        from html2mcq.pdf import PDFExtractor, _PyMuPDFBackend
-        from unittest.mock import patch, MagicMock
-
-        extractor = PDFExtractor(backend="pymupdf", fallback_to_docling=True)
-
-        mock_docling = MagicMock()
-        mock_docling.name = "docling_local"
-        mock_docling.extract.return_value = (
-            "Extracted via Docling: Python is a versatile language used in AI and web development.",
-            [{"page": 1, "text": "Python content", "tables": []}]
-        )
-
-        import fitz
-        doc = fitz.open()
-        doc.new_page()  # blank page → PyMuPDF returns ""
-        pdf_bytes = doc.tobytes()
-
-        with patch.object(extractor, "_get_docling_fallback", return_value=mock_docling):
-            blocks = extractor.from_bytes(pdf_bytes, source_url="https://example.com/scanned.pdf")
-
-        assert len(blocks) >= 1
-        assert blocks[0].metadata["backend"] == "docling_local"
-        assert "Python" in blocks[0].content
-
-    def test_no_fallback_when_disabled(self):
-        """When fallback_to_docling=False, empty result is returned without trying Docling."""
+    def test_blank_pdf_returns_empty_list(self):
+        """A blank PDF with no text should return an empty list."""
         from html2mcq.pdf import PDFExtractor
-        from unittest.mock import patch, MagicMock
 
-        extractor = PDFExtractor(backend="pymupdf", fallback_to_docling=False)
+        extractor = PDFExtractor(backend="pymupdf")
 
         import fitz
         doc = fitz.open()
         doc.new_page()
         pdf_bytes = doc.tobytes()
-
-        with patch.object(extractor, "_get_docling_fallback") as mock_fallback:
-            blocks = extractor.from_bytes(pdf_bytes)
-            mock_fallback.assert_not_called()
-
+        blocks = extractor.from_bytes(pdf_bytes)
         assert blocks == []
 
 
@@ -734,17 +611,21 @@ class TestMCQGeneratorPDF:
         from html2mcq.pdf import PDFExtractor
         gen = MCQGenerator.__new__(MCQGenerator)
         gen.provider = "openrouter"
+        gen.mcq_model = ""
+        gen.mcq_model_list = None
         gen.batch_size = 10
         gen.max_tokens = 4096
         gen.extractor = ContentExtractor(min_text_length=10)
-        from html2mcq.video import VideoTranscriptExtractor
-        gen.transcript_extractor = VideoTranscriptExtractor()
         gen.pdf_extractor = PDFExtractor(backend="pymupdf", chunk_size=500)
         gen.custom_instructions = ""
+        gen.method = "twostep"
         mock = MagicMock()
         mock.complete.return_value = MOCK_PDF_RESPONSE
-        mock.model = "llama-3.3-70b"
+        mock.mcq_model = "llama-3.3-70b"
         gen.backend = mock
+        from html2mcq.image_ocr import ImageOCRExtractor
+        gen.image_ocr_extractor = ImageOCRExtractor(backend="pytesseract")
+        gen.image_ocr_extractor.enrich_blocks = lambda blocks, **kw: blocks
         return gen
 
     def test_from_pdf_url(self):
@@ -799,6 +680,69 @@ class TestMCQGeneratorPDF:
         assert parsed["questions"][1]["multi"] is True
         assert parsed["questions"][1]["negative_marks"] == 0
 
+    def test_from_pdf_urls_list(self):
+        from unittest.mock import patch
+        from html2mcq.models import ContentBlock
+
+        gen = self._make_gen()
+        mock_blocks = [
+            ContentBlock(type="pdf_text", content="Python is versatile.",
+                         metadata={"source_url": "https://example.com/a.pdf", "backend": "pymupdf",
+                                   "chunk_index": 0, "total_chunks": 1, "total_pages": 1, "char_count": 20})
+        ]
+        with patch.object(gen.pdf_extractor, "from_url", return_value=mock_blocks):
+            mcq = gen.from_pdf_urls(["https://example.com/a.pdf", "https://example.com/b.pdf"], n=2)
+
+        assert isinstance(mcq, MCQSet)
+        assert mcq.total_questions == 2
+
+    def test_from_pdf_urls_single_str(self):
+        """from_pdf_url should still work as alias for from_pdf_urls."""
+        from unittest.mock import patch
+        from html2mcq.models import ContentBlock
+
+        gen = self._make_gen()
+        mock_blocks = [
+            ContentBlock(type="pdf_text", content="Python is great.",
+                         metadata={"source_url": "https://example.com/p.pdf", "backend": "pymupdf",
+                                   "chunk_index": 0, "total_chunks": 1, "total_pages": 1, "char_count": 16})
+        ]
+        with patch.object(gen.pdf_extractor, "from_url", return_value=mock_blocks):
+            mcq = gen.from_pdf_url("https://example.com/p.pdf", n=2, pdf_title="My PDF")
+        assert mcq.total_questions == 2
+        assert mcq.page_title == "My PDF"
+
+    def test_from_pdf_paths(self, tmp_path):
+        pdf_bytes = _make_pdf_bytes("Python supports object-oriented and functional programming.")
+        pdf_file = tmp_path / "guide.pdf"
+        pdf_file.write_bytes(pdf_bytes)
+
+        gen = self._make_gen()
+        mcq = gen.from_pdf_paths(str(pdf_file), n=2)
+
+        assert isinstance(mcq, MCQSet)
+        assert mcq.total_questions == 2
+
+    def test_from_image_urls(self):
+        from unittest.mock import patch
+        gen = self._make_gen()
+        gen.method = "images2mcq"
+        with patch.object(gen, "_vision_mcq", return_value=[gen._parse_response(MOCK_PDF_RESPONSE)[0]]):
+            mcq = gen.from_image_urls("https://example.com/img.png", n=1)
+        assert isinstance(mcq, MCQSet)
+        assert mcq.total_questions == 1
+
+    def test_from_image_paths(self, tmp_path):
+        img = tmp_path / "test.png"
+        img.write_bytes(b"fake-png-bytes")
+        gen = self._make_gen()
+        gen.method = "images2mcq"
+        from unittest.mock import patch
+        with patch.object(gen, "_vision_mcq", return_value=[gen._parse_response(MOCK_PDF_RESPONSE)[0]]):
+            mcq = gen.from_image_paths(str(img), n=1)
+        assert isinstance(mcq, MCQSet)
+        assert mcq.total_questions == 1
+
     def test_from_html_enriches_pdfs(self):
         from unittest.mock import patch
         from html2mcq.models import ContentBlock
@@ -820,7 +764,7 @@ class TestMCQGeneratorPDF:
             ContentBlock(type="text", content="Python is a popular programming language used in many domains.", metadata={"tag": "p"}),
             *mock_pdf_blocks
         ]):
-            mcq = gen.from_html(HTML, n=2, base_url="https://example.com/", enrich_videos=False)
+            mcq = gen.from_html(HTML, n=2, base_url="https://example.com/")
 
         assert isinstance(mcq, MCQSet)
         assert mcq.total_questions == 2
@@ -831,20 +775,24 @@ class TestMCQGeneratorPDF:
 class TestCustomInstructions:
     def _make_gen(self, instance_instructions=""):
         from html2mcq import MCQGenerator
-        from html2mcq.video import VideoTranscriptExtractor
         from html2mcq.pdf import PDFExtractor
         gen = MCQGenerator.__new__(MCQGenerator)
         gen.provider = "openrouter"
+        gen.mcq_model = ""
+        gen.mcq_model_list = None
         gen.batch_size = 10
         gen.max_tokens = 4096
         gen.extractor = ContentExtractor(min_text_length=10)
-        gen.transcript_extractor = VideoTranscriptExtractor()
         gen.pdf_extractor = PDFExtractor(backend="pymupdf")
         gen.custom_instructions = instance_instructions
+        gen.method = "twostep"
         mock = MagicMock()
         mock.complete.return_value = MOCK_RESPONSE
-        mock.model = "llama-3.3-70b"
+        mock.mcq_model = "llama-3.3-70b"
         gen.backend = mock
+        from html2mcq.image_ocr import ImageOCRExtractor
+        gen.image_ocr_extractor = ImageOCRExtractor(backend="pytesseract")
+        gen.image_ocr_extractor.enrich_blocks = lambda blocks, **kw: blocks
         return gen
 
     def test_custom_instructions_in_prompt(self):
@@ -891,7 +839,7 @@ class TestCustomInstructions:
             return original_complete(system, user, max_tokens)
         gen.backend.complete = capture_complete
 
-        gen.from_html(SAMPLE_HTML, n=2, enrich_videos=False, enrich_pdfs=False)
+        gen.from_html(SAMPLE_HTML, n=2,  enrich_pdfs=False)
         assert "CUSTOM INSTRUCTIONS" in captured["user"]
         assert "Only generate hard questions." in captured["user"]
 
@@ -907,7 +855,7 @@ class TestCustomInstructions:
 
         gen.from_html(SAMPLE_HTML, n=2,
                       custom_instructions="Make distractors very similar to correct answer.",
-                      enrich_videos=False, enrich_pdfs=False)
+                       enrich_pdfs=False)
         user_prompt = captured["user"]
         assert "Focus on tricky edge cases." in user_prompt
         assert "Make distractors very similar to correct answer." in user_prompt
@@ -926,7 +874,7 @@ class TestCustomInstructions:
 
         gen.from_html(SAMPLE_HTML, n=2,
                       custom_instructions="Generate questions suitable for beginners only.",
-                      enrich_videos=False, enrich_pdfs=False)
+                       enrich_pdfs=False)
         assert "Generate questions suitable for beginners only." in captured["user"]
 
     def test_empty_instructions_no_section(self):
@@ -940,7 +888,7 @@ class TestCustomInstructions:
         gen.backend.complete = cap
 
         gen.from_html(SAMPLE_HTML, n=2, custom_instructions="",
-                      enrich_videos=False, enrich_pdfs=False)
+                       enrich_pdfs=False)
         assert "CUSTOM INSTRUCTIONS" not in captured["user"]
 
     def test_fixed_system_prompt_unchanged(self):
@@ -956,7 +904,7 @@ class TestCustomInstructions:
         from html2mcq.prompts import build_system_prompt
         expected_system = build_system_prompt()
 
-        gen.from_html(SAMPLE_HTML, n=2, enrich_videos=False, enrich_pdfs=False)
+        gen.from_html(SAMPLE_HTML, n=2,  enrich_pdfs=False)
         # System prompt must be identical regardless of custom instructions
         assert captured["system"] == expected_system
 
@@ -979,3 +927,518 @@ class TestCustomInstructions:
         gen = self._make_gen(instance_instructions="")
         assert gen._resolve_instructions(None) == ""
         assert gen._resolve_instructions("") == ""
+
+
+# ── Backend classes ─────────────────────────────────────────────────────────
+
+class TestBackends:
+    """Test _make_backend factory and all backend implementations."""
+
+    def test_make_backend_openrouter(self):
+        from html2mcq.generator import _make_backend
+        backend = _make_backend("openrouter", "sk-or-v1-test", "gpt-4o")
+        assert backend.mcq_model == "gpt-4o"
+
+    def test_make_backend_ollama(self):
+        from html2mcq.generator import _make_backend
+        backend = _make_backend("ollama", "", "qwen2.5:7b", ollama_base_url="http://localhost:11434/v1")
+        assert backend.mcq_model == "qwen2.5:7b"
+
+    def test_make_backend_unknown(self):
+        from html2mcq.generator import _make_backend
+        with pytest.raises(ValueError, match="Unknown provider"):
+            _make_backend("unknown", "key", "model")
+
+    def test_anthropic_import_error(self):
+        from html2mcq.generator import _AnthropicBackend
+        import builtins
+        orig = builtins.__import__
+        def mock_import(name, *args, **kw):
+            if name == "anthropic":
+                raise ImportError
+            return orig(name, *args, **kw)
+        builtins.__import__ = mock_import
+        try:
+            with pytest.raises(ImportError, match="pip install anthropic"):
+                _AnthropicBackend("key", "model")
+        finally:
+            builtins.__import__ = orig
+
+    def test_openai_import_error(self):
+        from html2mcq.generator import _OpenAIBackend
+        import builtins
+        orig = builtins.__import__
+        def mock_import(name, *args, **kw):
+            if name == "openai":
+                raise ImportError
+            return orig(name, *args, **kw)
+        builtins.__import__ = mock_import
+        try:
+            with pytest.raises(ImportError, match="pip install openai"):
+                _OpenAIBackend("key", "model")
+        finally:
+            builtins.__import__ = orig
+
+    def test_openrouter_complete_empty(self):
+        from html2mcq.generator import _OpenRouterBackend
+        import openai
+        backend = _OpenRouterBackend("sk-or-test", "gpt-4o")
+        orig = backend.client.chat.completions.create
+        backend.client.chat.completions.create = lambda **kw: type('R', (), {'choices': [type('C', (), {'message': type('M', (), {'content': None})()})]})()
+        result = backend.complete("system", "user", 100)
+        assert result == ""
+        backend.client.chat.completions.create = orig
+
+    def test_ollama_default_model(self):
+        from html2mcq.generator import _OllamaBackend
+        backend = _OllamaBackend("", "")
+        assert backend.mcq_model == "qwen2.5:7b"
+
+
+# ── MCQGenerator init edge cases ────────────────────────────────────────────
+
+class TestMCQGeneratorInit:
+    def test_invalid_method(self):
+        from html2mcq.generator import MCQGenerator
+        with pytest.raises(ValueError, match="Unknown method"):
+            MCQGenerator(api_key="sk-test", provider="openrouter", method="invalid")
+
+    def test_ollama_auto_defaults_model(self):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(provider="ollama", mcq_model="", method="twostep")
+        assert gen.mcq_model == "qwen2.5:7b"
+
+    def test_ollama_auto_sets_default(self):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(provider="ollama", mcq_model="auto", method="twostep")
+        assert gen.mcq_model == "qwen2.5:7b"
+
+    def test_ollama_custom_model_preserved(self):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(provider="ollama", mcq_model="llama3.1:8b", method="twostep")
+        assert gen.mcq_model == "llama3.1:8b"
+
+    def test_api_key_override_replaces_backend(self):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-original", provider="openrouter",
+                           mcq_model="gpt-4o", method="twostep",
+                           api_key_override="sk-override")
+        # backend was recreated with override key
+        assert gen.backend is not None
+
+    def test_no_api_key_raises(self):
+        from html2mcq.generator import MCQGenerator
+        import os
+        # Ensure no env var interferes
+        old = os.environ.pop("OPENROUTER_API_KEY", None)
+        try:
+            with pytest.raises(ValueError, match="No API key"):
+                MCQGenerator(provider="openrouter", method="twostep")
+        finally:
+            if old:
+                os.environ["OPENROUTER_API_KEY"] = old
+
+
+# ── _OverrideContext ────────────────────────────────────────────────────────
+
+class TestOverrideContext:
+    def test_override_api_key_only(self):
+        from html2mcq.generator import MCQGenerator, _OverrideContext
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter",
+                           mcq_model="gpt-4o", method="twostep")
+        orig_backend = gen.backend
+        with _OverrideContext(gen, "sk-new", None):
+            assert gen.backend is not orig_backend
+        assert gen.backend is orig_backend
+
+    def test_override_log_path_only(self):
+        from html2mcq.generator import MCQGenerator, _OverrideContext
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter",
+                           mcq_model="gpt-4o", method="twostep")
+        gen.prompt_log_path = None
+        with _OverrideContext(gen, None, "/tmp/test_log.txt"):
+            assert gen.prompt_log_path == "/tmp/test_log.txt"
+        assert gen.prompt_log_path is None
+
+    def test_override_both(self):
+        from html2mcq.generator import MCQGenerator, _OverrideContext
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter",
+                           mcq_model="gpt-4o", method="twostep")
+        orig_backend = gen.backend
+        gen.prompt_log_path = None
+        with _OverrideContext(gen, "sk-new", "/tmp/log.txt"):
+            assert gen.backend is not orig_backend
+            assert gen.prompt_log_path == "/tmp/log.txt"
+        assert gen.backend is orig_backend
+        assert gen.prompt_log_path is None
+
+
+# ── _log_prompt ─────────────────────────────────────────────────────────────
+
+class TestLogPrompt:
+    def test_log_to_stdout(self, capsys):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        gen.prompt_log_path = "stdout"
+        gen._log_prompt("TEST", "hello world")
+        captured = capsys.readouterr()
+        assert "TEST" in captured.out
+        assert "hello world" in captured.out
+
+    def test_log_to_file(self, tmp_path):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        logfile = tmp_path / "prompt.log"
+        gen.prompt_log_path = str(logfile)
+        gen._log_prompt("TEST", "file content")
+        content = logfile.read_text(encoding="utf-8")
+        assert "TEST" in content
+        assert "file content" in content
+
+    def test_log_noop_when_none(self, capsys):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        gen.prompt_log_path = None
+        gen._log_prompt("TEST", "should not appear")
+        captured = capsys.readouterr()
+        assert captured.out == ""
+
+
+# ── _parse_response edge cases ──────────────────────────────────────────────
+
+class TestParseResponse:
+    def test_markdown_fences_json(self):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        raw = '```json\n[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""}]\n```'
+        result = gen._parse_response(raw)
+        assert len(result) == 1
+
+    def test_markdown_fences_no_lang(self):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        raw = '```\n[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""}]\n```'
+        result = gen._parse_response(raw)
+        assert len(result) == 1
+
+    def test_single_int_answer(self):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        raw = '[{"question_html":"Q","options":["A","B","C","D"],"answers":2,"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""}]'
+        result = gen._parse_response(raw)
+        assert result[0].answers == [2]
+
+    def test_invalid_json_with_array(self):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        raw = 'Some text [{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""}] trailing'
+        result = gen._parse_response(raw)
+        assert len(result) == 1
+
+    def test_invalid_json_no_array_raises(self):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        with pytest.raises(ValueError, match="non-JSON"):
+            gen._parse_response("not json at all")
+
+    def test_malformed_item_skipped(self):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        raw = '[{"question_html":"Q1","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""},{"question_html":"Q2","options":"not a list","answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""}]'
+        result = gen._parse_response(raw)
+        assert len(result) == 1
+
+    def test_answers_as_list_of_ints(self):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        raw = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0,2],"multi":true,"marks":1,"negative_marks":0,"difficulty":"medium","explaination":""}]'
+        result = gen._parse_response(raw)
+        assert result[0].answers == [0, 2]
+
+    def test_explaination_fallback(self):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        raw = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":"uses explanation key"}]'
+        result = gen._parse_response(raw)
+        assert result[0].explaination == "uses explanation key"
+
+
+# ── _resolve_mcq_model_list ─────────────────────────────────────────────────
+
+class TestResolveMcqModelList:
+    def test_uses_env_var(self):
+        import os
+        os.environ["HTML2MCQ_MCQ_MODELS"] = "model-a,model-b"
+        from html2mcq.generator import MCQGenerator
+        try:
+            result = MCQGenerator._resolve_mcq_model_list(None)
+            assert len(result) == 2
+            assert result[0]["model"] == "model-a"
+        finally:
+            del os.environ["HTML2MCQ_MCQ_MODELS"]
+
+    def test_uses_parameter(self):
+        from html2mcq.generator import MCQGenerator
+        result = MCQGenerator._resolve_mcq_model_list(["param-model"])
+        assert result[0]["model"] == "param-model"
+
+    def test_uses_default_when_none(self):
+        from html2mcq.generator import MCQGenerator
+        import os
+        os.environ.pop("HTML2MCQ_MCQ_MODELS", None)
+        result = MCQGenerator._resolve_mcq_model_list(None)
+        assert len(result) > 0
+
+    def test_dict_entry_passthrough(self):
+        from html2mcq.generator import MCQGenerator
+        result = MCQGenerator._resolve_mcq_model_list([{"model": "custom", "max_tokens": 500}])
+        assert result[0]["model"] == "custom"
+        assert result[0]["max_tokens"] == 500
+
+    def test_unknown_model_tokens_fallback(self):
+        from html2mcq.generator import MCQGenerator
+        result = MCQGenerator._resolve_mcq_model_list(["completely-unknown-model"])
+        assert result[0]["max_tokens"] == 16384
+
+
+# ── _generate edge cases ────────────────────────────────────────────────────
+
+class TestGenerateEdgeCases:
+    def test_empty_blocks_returns_empty(self):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        qs, summary = gen._generate([], n=5, page_title="Test", source_url=None, difficulty_mix=None, focus_topics=None)
+        assert qs == []
+        assert summary == ""
+
+    def test_auto_mode_all_models_fail(self):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", mcq_model="auto",
+                           mcq_model_list=["test-fail-model"], method="twostep")
+        gen.backend.complete = lambda s, u, m: ""
+        with pytest.raises(RuntimeError, match="All MCQ models in list failed"):
+            gen._generate([ContentBlock(type="text", content="hello")], n=2, page_title="Test", source_url=None, difficulty_mix=None, focus_topics=None)
+
+
+# ── _vision_mcq edge cases ──────────────────────────────────────────────────
+
+class TestVisionMcq:
+    def test_no_api_key_returns_empty(self):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="images2mcq")
+        gen.image_ocr_extractor.vision_api_key = ""
+        result = gen._vision_mcq([ContentBlock(type="image", content="https://example.com/img.png")], n=2, page_title="Test")
+        assert result == []
+
+    def test_no_openai_returns_empty(self, monkeypatch):
+        from html2mcq.generator import MCQGenerator
+        import builtins
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="images2mcq")
+        gen.image_ocr_extractor.vision_api_key = "sk-test"
+        orig_import = builtins.__import__
+        def mock_import(name, *args, **kw):
+            if name == "openai":
+                raise ImportError
+            return orig_import(name, *args, **kw)
+        monkeypatch.setattr(builtins, "__import__", mock_import)
+        result = gen._vision_mcq([ContentBlock(type="image", content="https://example.com/img.png")], n=2, page_title="Test")
+        assert result == []
+
+    def test_all_downloads_fail_returns_empty(self, monkeypatch):
+        from html2mcq.generator import MCQGenerator
+        from html2mcq import image_ocr
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="images2mcq")
+        gen.image_ocr_extractor.vision_api_key = "sk-test"
+        monkeypatch.setattr("html2mcq.generator._download_image", lambda url, **kw: None)
+        result = gen._vision_mcq([ContentBlock(type="image", content="https://example.com/img.png")], n=2, page_title="Test")
+        assert result == []
+
+
+# ── _image_twostep edge cases ───────────────────────────────────────────────
+
+class TestImageTwostep:
+    def test_all_downloads_fail_raises(self, monkeypatch):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        monkeypatch.setattr("html2mcq.generator._download_image", lambda url, **kw: None)
+        gen.save_ocr_path = None
+        with pytest.raises(ValueError, match="No image data"):
+            gen._image_twostep(paths=["test.png"], urls=None,
+                               blocks=[ContentBlock(type="image", content="data:image/png;base64,fake")],
+                               n=2, title="Test")
+
+    def test_save_ocr_path_writes_file(self, monkeypatch, tmp_path):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        monkeypatch.setattr("html2mcq.generator._download_image", lambda url, **kw: b"fake-img-data")
+        gen.image_ocr_extractor.ocr_image_bytes = lambda blobs: "OCR extracted text"
+        gen.save_ocr_path = str(tmp_path / "ocr_out.txt")
+        mock_backend = MagicMock()
+        mock_backend.complete.return_value = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""}]'
+        mock_backend.mcq_model = "test"
+        gen.backend = mock_backend
+        mcq = gen._image_twostep(paths=["test.png"], urls=None,
+                                  blocks=[ContentBlock(type="image", content="data:image/png;base64,fake")],
+                                  n=1, title="Test")
+        assert mcq.total_questions == 1
+        assert (tmp_path / "ocr_out.txt").read_text(encoding="utf-8") == "OCR extracted text"
+
+
+# ── from_image_urls / from_image_paths method dispatch ──────────────────────
+
+class TestImageMethodDispatch:
+    def test_image_urls_twostep(self):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        # Mock _image_twostep to avoid actual downloads
+        gen._image_twostep = lambda **kw: MCQSet(None, "Test", [], 0, "", total_exam_time=0)
+        result = gen.from_image_urls("https://example.com/img.png", n=1)
+        assert isinstance(result, MCQSet)
+
+    def test_image_urls_images2mcq(self):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="images2mcq")
+        gen.image_ocr_extractor.vision_api_key = ""
+        gen._vision_mcq = lambda *args, **kw: []
+        result = gen.from_image_urls("https://example.com/img.png", n=1)
+        assert isinstance(result, MCQSet)
+
+    def test_image_paths_single_string(self):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="images2mcq")
+        gen.image_ocr_extractor.vision_api_key = ""
+        gen._vision_mcq = lambda *args, **kw: []
+        with pytest.raises(FileNotFoundError):
+            gen.from_image_paths("nonexistent.png", n=1)
+
+    def test_image_urls_single_string_to_list(self):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        gen._image_twostep = lambda **kw: MCQSet(None, "Test", [], 0, "", total_exam_time=0)
+        result = gen.from_image_urls("https://example.com/img.png", n=1)
+        assert isinstance(result, MCQSet)
+
+
+# ── from_pdf_urls / from_pdf_paths edge cases ───────────────────────────────
+
+class TestPdfEdgeCases:
+    def test_pdf_urls_empty_pdf_raises(self):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        gen.pdf_extractor.from_url = lambda url: []
+        with pytest.raises(ValueError, match="No text could be extracted from PDF"):
+            gen.from_pdf_urls("https://example.com/test.pdf", n=2)
+
+    def test_pdf_paths_empty_pdf_raises(self, tmp_path):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        gen.pdf_extractor.from_path = lambda path: []
+        with pytest.raises(ValueError, match="No text could be extracted from PDF"):
+            gen.from_pdf_paths(str(tmp_path / "test.pdf"), n=2)
+
+    def test_pdf_urls_single_string_to_list(self):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        gen.pdf_extractor.from_url = lambda url: [ContentBlock(type="pdf_text", content="test")]
+        mock_backend = MagicMock()
+        mock_backend.complete.return_value = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""}]'
+        mock_backend.mcq_model = "test"
+        gen.backend = mock_backend
+        result = gen.from_pdf_urls("https://example.com/test.pdf", n=1)
+        assert result.total_questions == 1
+
+
+# ── from_blocks ─────────────────────────────────────────────────────────────
+
+class TestFromBlocks:
+    def test_from_blocks_basic(self):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        mock_backend = MagicMock()
+        mock_backend.complete.return_value = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""}]'
+        mock_backend.mcq_model = "test"
+        gen.backend = mock_backend
+        blocks = [ContentBlock(type="text", content="test content")]
+        result = gen.from_blocks(blocks, n=1)
+        assert result.total_questions == 1
+
+    def test_from_blocks_with_prompt_log(self, tmp_path):
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        mock_backend = MagicMock()
+        mock_backend.complete.return_value = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""}]'
+        mock_backend.mcq_model = "test"
+        gen.backend = mock_backend
+        logfile = tmp_path / "prompt.log"
+        blocks = [ContentBlock(type="text", content="test")]
+        result = gen.from_blocks(blocks, n=1, prompt_log_path=str(logfile))
+        assert result.total_questions == 1
+        assert logfile.exists()
+
+
+# ── from_html with images2mcq method ────────────────────────────────────────
+
+class TestFromHtmlMethod:
+    def test_from_html_images2mcq_with_images(self):
+        from html2mcq.generator import MCQGenerator
+        from html2mcq.extractor import ContentExtractor
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="images2mcq")
+        mock_backend = MagicMock()
+        mock_backend.complete.return_value = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""}]'
+        mock_backend.mcq_model = "test"
+        gen.backend = mock_backend
+        gen._vision_mcq = lambda *args, **kw: []
+        html = '<html><body><p>test</p><img src="https://example.com/img.png" alt="test"></body></html>'
+        result = gen.from_html(html, n=1, base_url="https://example.com/", enrich_images=True)
+        assert isinstance(result, MCQSet)
+
+
+# ── CLI tests ───────────────────────────────────────────────────────────────
+
+class TestCLI:
+    def test_cli_html_input(self, tmp_path, monkeypatch):
+        import sys
+        from html2mcq import cli
+        html_file = tmp_path / "page.html"
+        html_file.write_text("<html><body><p>test</p></body></html>", encoding="utf-8")
+        monkeypatch.setattr(sys, "argv", ["html2mcq", "--html", str(html_file), "-n", "1", "--api-key", "sk-test"])
+        from html2mcq.generator import MCQGenerator
+        orig = MCQGenerator.from_html
+        try:
+            def mock_from_html(self, html, **kw):
+                return MCQSet(None, "Test", [], 1, "", total_exam_time=2)
+            MCQGenerator.from_html = mock_from_html
+            cli.main()
+        finally:
+            MCQGenerator.from_html = orig
+
+    def test_cli_url_input(self, monkeypatch):
+        import sys
+        from html2mcq import cli
+        monkeypatch.setattr(sys, "argv", ["html2mcq", "https://example.com", "-n", "1", "--api-key", "sk-test"])
+        from html2mcq.generator import MCQGenerator
+        orig = MCQGenerator.from_url
+        try:
+            def mock_from_url(self, url, **kw):
+                return MCQSet(None, "Test", [], 1, "", total_exam_time=2)
+            MCQGenerator.from_url = mock_from_url
+            cli.main()
+        finally:
+            MCQGenerator.from_url = orig
+
+    def test_cli_json_output(self, tmp_path, monkeypatch):
+        import sys
+        from html2mcq import cli
+        monkeypatch.setattr(sys, "argv", ["html2mcq", "https://example.com", "-n", "1",
+                                          "--api-key", "sk-test", "--format", "json",
+                                          "--output", str(tmp_path / "out.json")])
+        from html2mcq.generator import MCQGenerator
+        orig = MCQGenerator.from_url
+        try:
+            def mock_from_url(self, url, **kw):
+                return MCQSet(None, "Test", [], 1, "", total_exam_time=2)
+            MCQGenerator.from_url = mock_from_url
+            cli.main()
+            assert (tmp_path / "out.json").exists()
+        finally:
+            MCQGenerator.from_url = orig

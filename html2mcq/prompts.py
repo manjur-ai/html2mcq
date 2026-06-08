@@ -59,9 +59,8 @@ def build_user_prompt(
     code_blocks       = [b for b in blocks if b.type == "code"]
     table_blocks      = [b for b in blocks if b.type == "table"]
     image_blocks      = [b for b in blocks if b.type == "image"]
-    video_blocks      = [b for b in blocks if b.type == "video"]
+    image_ocr_blocks  = [b for b in blocks if b.type == "image_ocr"]
     pdf_blocks        = [b for b in blocks if b.type == "pdf"]
-    transcript_blocks = [b for b in blocks if b.type == "transcript"]
     pdf_text_blocks   = [b for b in blocks if b.type == "pdf_text"]
 
     if text_blocks:
@@ -95,15 +94,14 @@ def build_user_prompt(
             sections.append(line)
         sections.append("")
 
-    if video_blocks:
-        sections.append("=== VIDEOS ===")
-        for i, b in enumerate(video_blocks, 1):
-            alt = b.alt_text or ""
+    if image_ocr_blocks:
+        sections.append("=== IMAGE OCR TEXT ===")
+        for i, b in enumerate(image_ocr_blocks, 1):
             cap = b.caption or ""
-            line = f"[VIDEO {i}] URL: {b.content}"
-            if alt: line += f" | Title: {alt}"
-            if cap: line += f" | Caption: {cap}"
-            sections.append(line)
+            header = f"[IMAGE {i} OCR]"
+            if cap:
+                header += f" ({cap})"
+            sections.append(f"{header}\n{b.content}")
         sections.append("")
 
     if pdf_blocks:
@@ -113,18 +111,6 @@ def build_user_prompt(
             line = f"[PDF {i}] URL: {b.content}"
             if alt: line += f" | Link text: {alt}"
             sections.append(line)
-        sections.append("")
-
-    if transcript_blocks:
-        sections.append("=== VIDEO TRANSCRIPT ===")
-        for i, b in enumerate(transcript_blocks, 1):
-            ts = b.metadata.get("approx_timestamp", "")
-            vid = b.metadata.get("video_id", "")
-            header = f"[TRANSCRIPT {i}"
-            if ts: header += f" @ {ts}"
-            if vid: header += f" | video:{vid}"
-            header += "]"
-            sections.append(f"{header}\n{b.content}")
         sections.append("")
 
     if pdf_text_blocks:
@@ -152,8 +138,9 @@ def build_user_prompt(
         instructions.append(f"Focus especially on these topics: {', '.join(focus_topics)}")
 
     instructions.append(
-        "Use ALL content types (text, code, images, videos, PDFs, tables) where possible. "
-        "For images/videos/PDFs, base questions on their URLs, alt-texts, captions, and context."
+        "Use ALL content types (text, code, images, PDFs, tables) where possible. "
+        "For images, base questions on the concepts they illustrate, "
+        "not on their URLs, alt-texts, or filenames."
     )
     if custom_instructions and custom_instructions.strip():
         instructions.append(

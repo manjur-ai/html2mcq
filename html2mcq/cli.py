@@ -34,10 +34,28 @@ def main():
     parser.add_argument("--batch-size", type=int, default=10, help="Questions per API call (default: 10)")
 
     # AI provider
-    parser.add_argument("--provider", default="anthropic", choices=["anthropic", "openai", "openrouter"],
-                        help="AI provider (default: anthropic)")
-    parser.add_argument("--model", default="", help="Override model name")
+    parser.add_argument("--provider", default="openrouter", choices=["anthropic", "openai", "openrouter", "ollama"],
+                        help="AI provider (default: openrouter). Use 'ollama' for local LLM.")
+    parser.add_argument("--mcq-model", default="", help="MCQ generation model (or 'auto' to try --mcq-models)")
+    parser.add_argument("--mcq-models", default="",
+                        help="Comma-separated priority model list for --mcq-model auto. "
+                             "Runtime-reloadable via HTML2MCQ_MCQ_MODELS env var.")
     parser.add_argument("--api-key", default="", help="API key (or set env var)")
+    parser.add_argument("--ollama-base-url", default="http://localhost:11434/v1",
+                        help="Ollama API base URL (default: http://localhost:11434/v1). "
+                             "Only used when --provider ollama.")
+    parser.add_argument("--ocr-model", default="pytesseract",
+                        help="OCR backend: 'pytesseract', 'auto', or any OpenRouter model ID "
+                             "(e.g. 'openai/gpt-4o'). (default: pytesseract)")
+    parser.add_argument("--ocr-models", default="",
+                        help="Comma-separated priority model list for --ocr-model auto. "
+                             "E.g. 'gpt-4o,gemma-27b,gemma-12b,pytesseract'")
+    parser.add_argument("--method", default="twostep", choices=["twostep", "images2mcq"],
+                        help="Image processing: 'twostep' (OCR→MCQ) or 'images2mcq' (vision direct). (default: twostep)")
+    parser.add_argument("--save-ocr-path", default="",
+                        help="File path to save OCR text when method=twostep")
+    parser.add_argument("--prompt-log-path", default="",
+                        help="Dump prompts to file, or 'stdout' / '-' for terminal")
 
     # Output
     parser.add_argument("--output", "-o", default="", help="Output file (.json or .txt). Default: stdout")
@@ -54,12 +72,25 @@ def main():
         sys.exit(1)
 
     api_key = args.api_key or ""
+    ocr_models = None
+    if args.ocr_models:
+        ocr_models = [m.strip() for m in args.ocr_models.split(",") if m.strip()]
+    mcq_model_list = None
+    if args.mcq_models:
+        mcq_model_list = [m.strip() for m in args.mcq_models.split(",") if m.strip()]
     try:
         gen = MCQGenerator(
             api_key=api_key or None,
             provider=args.provider,
-            model=args.model,
+            mcq_model=args.mcq_model,
+            mcq_model_list=mcq_model_list,
             batch_size=args.batch_size,
+            ocr_model=args.ocr_model,
+            ocr_models=ocr_models,
+            method=args.method,
+            save_ocr_path=args.save_ocr_path or None,
+            prompt_log_path=args.prompt_log_path or None,
+            ollama_base_url=args.ollama_base_url,
         )
     except ValueError as e:
         print(f"Configuration error: {e}", file=sys.stderr)

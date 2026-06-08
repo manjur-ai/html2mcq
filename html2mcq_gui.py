@@ -14,6 +14,7 @@ python html2mcq_gui.py
 """
 
 import os
+import re
 import sys
 import json
 import threading
@@ -49,8 +50,8 @@ class Html2MCQApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("html2mcq — MCQ Generator")
-        self.geometry("1050x780")
-        self.minsize(860, 620)
+        self.geometry("1100x850")
+        self.minsize(900, 700)
         self.configure(bg=BG)
         self._result_mcq = None
         self._build_ui()
@@ -72,9 +73,32 @@ class Html2MCQApp(tk.Tk):
         body = tk.Frame(self, bg=BG)
         body.pack(fill="both", expand=True, padx=14, pady=12)
 
-        left  = tk.Frame(body, bg=BG, width=420)
-        left.pack(side="left", fill="y", padx=(0,10))
-        left.pack_propagate(False)
+        # Scrollable left panel
+        left_outer = tk.Frame(body, bg=BG, width=430)
+        left_outer.pack(side="left", fill="y", padx=(0,10))
+        left_outer.pack_propagate(False)
+
+        left_canvas = tk.Canvas(left_outer, bg=BG, highlightthickness=0, width=415)
+        left_scrollbar = ttk.Scrollbar(left_outer, orient="vertical", command=left_canvas.yview)
+        left_canvas.configure(yscrollcommand=left_scrollbar.set)
+        left_scrollbar.pack(side="right", fill="y")
+        left_canvas.pack(side="left", fill="both", expand=True)
+
+        left = tk.Frame(left_canvas, bg=BG)
+        left_window = left_canvas.create_window((0, 0), window=left, anchor="nw")
+
+        def _on_left_configure(e):
+            left_canvas.configure(scrollregion=left_canvas.bbox("all"))
+        def _on_canvas_resize(e):
+            left_canvas.itemconfig(left_window, width=e.width)
+        left.bind("<Configure>", _on_left_configure)
+        left_canvas.bind("<Configure>", _on_canvas_resize)
+
+        # Mouse wheel scroll
+        def _on_mousewheel(e):
+            delta = -1 if e.delta > 0 else 1
+            left_canvas.yview_scroll(delta, "units")
+        left_canvas.bind("<MouseWheel>", _on_mousewheel)
 
         right = tk.Frame(body, bg=BG)
         right.pack(side="left", fill="both", expand=True)
@@ -124,29 +148,18 @@ class Html2MCQApp(tk.Tk):
         # Tab: URL
         t_url = self._tab_frame(self.input_tabs, "🌐 URL")
         self.input_tabs.add(t_url, text="  🌐 Web URL  ")
-        lbl = tk.Label(t_url, text="Page URL (HTML tutorial, YouTube, or direct PDF link):",
+        lbl = tk.Label(t_url, text="Page URL (HTML tutorial or direct PDF link):",
                        font=FONT, bg=CARD, fg=TEXT_DIM)
         lbl.pack(anchor="w", pady=(0,4))
         self.url_var = tk.StringVar()
         self._entry(t_url, self.url_var,
-                    placeholder="https://docs.python.org/3/tutorial/  or  https://youtu.be/...").pack(fill="x")
-        self.enrich_videos_var = tk.BooleanVar(value=True)
+                    placeholder="https://docs.python.org/3/tutorial/").pack(fill="x")
         self.enrich_pdfs_var   = tk.BooleanVar(value=True)
+        self.enrich_images_var = tk.BooleanVar(value=True)
         cb_row = tk.Frame(t_url, bg=CARD)
         cb_row.pack(fill="x", pady=(6,0))
-        self._checkbox(cb_row, "Auto-fetch YouTube transcripts", self.enrich_videos_var).pack(side="left", padx=(0,12))
-        self._checkbox(cb_row, "Auto-extract PDF links", self.enrich_pdfs_var).pack(side="left")
-
-        # Tab: YouTube
-        t_yt = self._tab_frame(self.input_tabs, "▶ YouTube")
-        self.input_tabs.add(t_yt, text="  ▶ YouTube  ")
-        tk.Label(t_yt, text="YouTube video URL:", font=FONT, bg=CARD, fg=TEXT_DIM).pack(anchor="w", pady=(0,4))
-        self.yt_url_var = tk.StringVar()
-        self._entry(t_yt, self.yt_url_var,
-                    placeholder="https://www.youtube.com/watch?v=...").pack(fill="x")
-        tk.Label(t_yt, text="Video title (optional):", font=FONT, bg=CARD, fg=TEXT_DIM).pack(anchor="w", pady=(8,4))
-        self.yt_title_var = tk.StringVar()
-        self._entry(t_yt, self.yt_title_var, placeholder="e.g. Python Basics for Beginners").pack(fill="x")
+        self._checkbox(cb_row, "Auto-extract PDF links", self.enrich_pdfs_var).pack(side="left", padx=(0,12))
+        self._checkbox(cb_row, "Auto-OCR images", self.enrich_images_var).pack(side="left")
 
         # Tab: PDF URL
         t_pdfurl = self._tab_frame(self.input_tabs, "📄 PDF URL")
@@ -162,16 +175,11 @@ class Html2MCQApp(tk.Tk):
         be_row = tk.Frame(t_pdfurl, bg=CARD)
         be_row.pack(fill="x", pady=(8,0))
         tk.Label(be_row, text="PDF backend:", font=FONT, bg=CARD, fg=TEXT_DIM).pack(side="left", padx=(0,8))
-        self.pdf_backend_var = tk.StringVar(value="pymupdf")
-        for be in ("pymupdf", "docling_local", "docling_serve"):
+        self.pdf_backend_var = tk.StringVar(value="auto_detect")
+        for be in ("auto_detect", "pymupdf", "image"):
             tk.Radiobutton(be_row, text=be, variable=self.pdf_backend_var, value=be,
                            font=FONT, bg=CARD, fg=TEXT, selectcolor=ACCENT,
                            activebackground=CARD).pack(side="left", padx=4)
-        docling_row = tk.Frame(t_pdfurl, bg=CARD)
-        docling_row.pack(fill="x", pady=(4,0))
-        tk.Label(docling_row, text="Docling Serve URL:", font=FONT, bg=CARD, fg=TEXT_DIM).pack(side="left", padx=(0,4))
-        self.docling_url_var = tk.StringVar(value="http://localhost:5001")
-        self._entry(docling_row, self.docling_url_var).pack(side="left", fill="x", expand=True)
 
         # Tab: Local PDF
         t_pdffile = self._tab_frame(self.input_tabs, "📁 Local PDF")
@@ -235,8 +243,17 @@ class Html2MCQApp(tk.Tk):
         self._entry(row_topics, self.topics_var,
                     placeholder="e.g. loops, functions, OOP  (comma-separated)").pack(side="left", fill="x", expand=True)
 
+        row_ocr = tk.Frame(opt_card, bg=CARD)
+        row_ocr.pack(fill="x", pady=(0,6))
+        tk.Label(row_ocr, text="OCR model", width=16, anchor="w",
+                 font=FONT, bg=CARD, fg=TEXT_DIM).pack(side="left")
+        self.ocr_model_var = tk.StringVar(value="pytesseract")
+        ocr_combo = ttk.Combobox(row_ocr, textvariable=self.ocr_model_var,
+                                  values=["pytesseract", "vision_api"],
+                                  state="readonly", font=FONT)
+        ocr_combo.pack(side="left", fill="x", expand=True)
+
         # Custom instructions
-        tk.Label(opt_card, text="Custom instructions", anchor="w",
                  font=FONT, bg=CARD, fg=TEXT_DIM).pack(anchor="w", pady=(0,4))
         self.custom_instructions_text = tk.Text(
             opt_card, height=4, font=FONT,
@@ -390,7 +407,8 @@ class Html2MCQApp(tk.Tk):
             model=model,
             batch_size=batch,
             pdf_backend=self.pdf_backend_var.get(),
-            docling_api_url=self.docling_url_var.get().strip(),
+            ocr_model=self.ocr_model_var.get(),
+            custom_instructions=custom_instructions,
         )
 
         tab = self.input_tabs.index(self.input_tabs.select())
@@ -403,23 +421,12 @@ class Html2MCQApp(tk.Tk):
             mcq = gen.from_url(
                 url, n=n,
                 difficulty_mix=diff, focus_topics=topics,
-                enrich_videos=self.enrich_videos_var.get(),
                 enrich_pdfs=self.enrich_pdfs_var.get(),
+                enrich_images=self.enrich_images_var.get(),
                 custom_instructions=custom_instructions,
             )
 
-        elif tab == 1:  # YouTube
-            url = self.yt_url_var.get().strip()
-            if not url:
-                raise ValueError("Please enter a YouTube URL.")
-            mcq = gen.from_video_url(
-                url, n=n,
-                video_title=self.yt_title_var.get().strip(),
-                difficulty_mix=diff, focus_topics=topics,
-                custom_instructions=custom_instructions,
-            )
-
-        elif tab == 2:  # PDF URL
+        elif tab == 1:  # PDF URL
             url = self.pdf_url_var.get().strip()
             if not url:
                 raise ValueError("Please enter a PDF URL.")
@@ -430,7 +437,7 @@ class Html2MCQApp(tk.Tk):
                 custom_instructions=custom_instructions,
             )
 
-        elif tab == 3:  # Local PDF
+        elif tab == 2:  # Local PDF
             path = self.pdf_path_var.get().strip()
             if not path:
                 raise ValueError("Please select a PDF file.")
@@ -442,14 +449,14 @@ class Html2MCQApp(tk.Tk):
             )
 
         else:           # Raw HTML
-            html = self.raw_html_text.get("1.0", "end").strip()
+            html = self.raw_html_text.get("1.0", "end-1c").strip()
             if not html:
                 raise ValueError("Please paste some HTML content.")
             mcq = gen.from_html(
                 html, n=n,
                 base_url=self.base_url_var.get().strip(),
                 difficulty_mix=diff, focus_topics=topics,
-                enrich_videos=False, enrich_pdfs=False,
+                enrich_pdfs=False, enrich_images=True,
                 custom_instructions=custom_instructions,
             )
 
@@ -555,11 +562,12 @@ class Html2MCQApp(tk.Tk):
         if not self._result_mcq:
             messagebox.showwarning("No results", "Generate questions first.")
             return
+        safe = re.sub(r'[\\/*?:"<>|]', "", self._result_mcq.page_title[:30].replace(" ", "_")) or "mcq"
         path = filedialog.asksaveasfilename(
             title="Save MCQ as JSON",
             defaultextension=".json",
             filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
-            initialfile=f"{self._result_mcq.page_title[:30].replace(' ','_')}_mcq.json"
+            initialfile=f"{safe}_mcq.json"
         )
         if path:
             Path(path).write_text(self._result_mcq.to_json(), encoding="utf-8")

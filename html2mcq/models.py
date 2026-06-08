@@ -9,7 +9,7 @@ import json
 @dataclass
 class ContentBlock:
     """Represents a block of extracted content from an HTML page."""
-    type: str                   # "text" | "image" | "video" | "pdf" | "code" | "table"
+    type: str                   # "text" | "image" | "pdf" | "code" | "table" | "image_ocr" | "pdf_text"
     content: str                # text content or URL
     alt_text: Optional[str] = None   # for images
     caption: Optional[str] = None    # for media
