@@ -30,8 +30,11 @@ class _AnthropicBackend:
     def __init__(self, api_key: str, mcq_model: str):
         try:
             import anthropic
-        except ImportError:
-            raise ImportError("pip install anthropic")
+        except ImportError as e:
+            raise ImportError(
+                "Missing 'anthropic' package. Install it with: pip install anthropic\n"
+                f"  Original error: {e}"
+            ) from e
         self.client = anthropic.Anthropic(api_key=api_key)
         self.mcq_model = mcq_model or self.DEFAULT_MODEL
 
@@ -53,8 +56,11 @@ class _OpenAIBackend:
     def __init__(self, api_key: str, mcq_model: str):
         try:
             import openai
-        except ImportError:
-            raise ImportError("pip install openai")
+        except ImportError as e:
+            raise ImportError(
+                "Missing 'openai' package. Install it with: pip install openai\n"
+                f"  Original error: {e}"
+            ) from e
         self.client = openai.OpenAI(api_key=api_key)
         self.mcq_model = mcq_model or self.DEFAULT_MODEL
 
@@ -81,8 +87,11 @@ class _OpenRouterBackend:
     def __init__(self, api_key: str, mcq_model: str, site_url: str = "", site_name: str = "html2mcq"):
         try:
             import openai
-        except ImportError:
-            raise ImportError("pip install openai")
+        except ImportError as e:
+            raise ImportError(
+                "Missing 'openai' package. Install it with: pip install openai\n"
+                f"  Original error: {e}"
+            ) from e
         self.client = openai.OpenAI(
             api_key=api_key,
             base_url="https://openrouter.ai/api/v1",
@@ -118,8 +127,11 @@ class _OllamaBackend:
     def __init__(self, api_key: str, mcq_model: str, ollama_base_url: str = "http://localhost:11434/v1"):
         try:
             import openai
-        except ImportError:
-            raise ImportError("pip install openai")
+        except ImportError as e:
+            raise ImportError(
+                "Missing 'openai' package. Install it with: pip install openai\n"
+                f"  Original error: {e}"
+            ) from e
         self.client = openai.OpenAI(
             api_key=api_key or "ollama",
             base_url=ollama_base_url,
