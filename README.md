@@ -304,7 +304,8 @@ html2mcq/
 │   ├── prompts.py          # System + user prompt builders
 │   └── cli.py              # CLI entry point
 ├── tests/
-│   └── test_html2mcq.py    # 67 unit tests (fully mocked)
+│   ├── test_html2mcq.py       # 119 unit tests (fully mocked)
+│   └── scripts/               # Debug / scratch scripts
 ├── pyproject.toml
 ├── README.md
 └── CHANGELOG.md
