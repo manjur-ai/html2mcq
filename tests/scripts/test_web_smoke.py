@@ -1,4 +1,4 @@
-"""Smoke test for html2mcq_web.py Flask server."""
+"""Smoke test for html2mcq_web.py (stdlib HTTP server)."""
 import json
 import os
 import sys
@@ -9,13 +9,13 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-import html2mcq_web
-from werkzeug.serving import make_server
+from html2mcq_web import Handler
+from http.server import HTTPServer
 
-srv = make_server("0.0.0.0", 5000, html2mcq_web.app)
+srv = HTTPServer(("0.0.0.0", 5000), Handler)
 t = threading.Thread(target=srv.serve_forever, daemon=True)
 t.start()
-time.sleep(1)
+time.sleep(0.5)
 
 try:
     # Test 1: GET / returns HTML
@@ -36,7 +36,14 @@ try:
         assert "error" in body
         print(f"\u2713 POST /api/generate (bad request) returns error: {body.get('error', '')[:60]}")
 
-    # Test 3: HTML page has required UI elements
+    # Test 3: POST to unknown path returns 404
+    try:
+        urllib.request.urlopen("http://localhost:5000/api/unknown")
+    except urllib.error.HTTPError as e:
+        assert e.code == 404
+        print("\u2713 GET /api/unknown returns 404")
+
+    # Test 4: HTML page has required UI elements
     for eid in ("generateBtn", "webUrl", "pdfUrl", "pdfFile", "rawHtml", "apiKey", "model"):
         assert eid in html, f"Missing element: {eid}"
     print("\u2713 HTML page has all required UI elements")

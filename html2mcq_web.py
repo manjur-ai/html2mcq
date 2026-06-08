@@ -1,11 +1,11 @@
 """
-html2mcq_web.py — Flask web app for html2mcq
-=============================================
-A browser-based GUI to generate MCQ questions from:
-  • HTML page URL
-  • PDF URL
-  • Local PDF file
-  • Raw HTML paste
+html2mcq_web.py — Self-contained web app for html2mcq
+======================================================
+Zero dependencies beyond the html2mcq library itself.
+Uses only Python stdlib (http.server).
+
+  • HTML page URL       • PDF URL
+  • Local PDF file      • Raw HTML paste
 
 Usage
 -----
@@ -13,18 +13,15 @@ python html2mcq_web.py
   → opens http://localhost:5000
 """
 
-import io
+import base64
 import json
 import os
 import re
 import sys
 import tempfile
+import traceback
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
-
-import flask
-from flask import Flask, jsonify, render_template_string, request
-
-app = Flask(__name__)
 
 
 # ── HTML template (dark theme matching tkinter GUI) ──────────────────────
@@ -39,13 +36,10 @@ TEMPLATE = r"""<!DOCTYPE html>
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:'Segoe UI',system-ui,sans-serif;background:#1e1e2e;color:#e2e8f0;min-height:100vh}
 :root{--bg:#1e1e2e;--bg2:#2a2a3e;--bg3:#313145;--accent:#7c3aed;--accent-h:#6d28d9;--green:#22c55e;--red:#ef4444;--yellow:#f59e0b;--text:#e2e8f0;--dim:#94a3b8;--border:#3f3f5a;--card:#252538;--input:#1a1a2e}
-/* Header */
 header{background:var(--accent);padding:10px 20px;display:flex;align-items:center;gap:12px}
 header h1{font-size:18px;font-weight:700;color:#fff}
 header span{font-size:12px;color:#ddd6fe}
-/* Body */
 .body{display:flex;gap:12px;padding:12px 14px;height:calc(100vh - 52px)}
-/* Left panel */
 .left{width:430px;min-width:430px;overflow-y:auto;padding-right:4px}
 .left::-webkit-scrollbar{width:6px}
 .left::-webkit-scrollbar-track{background:transparent}
@@ -65,20 +59,17 @@ input::placeholder,textarea::placeholder{color:#555}
 .checkbox-row{display:flex;gap:16px;margin-top:6px}
 .checkbox-row label{display:flex;align-items:center;gap:4px;cursor:pointer;min-width:auto;color:var(--text);font-size:12px}
 .checkbox-row input[type=checkbox]{accent-color:var(--accent);width:14px;height:14px}
-/* Tabs */
 .tabs{display:flex;gap:2px;margin-bottom:0}
 .tab-btn{flex:1;padding:7px 6px;font-size:11px;background:var(--bg3);color:var(--dim);border:none;cursor:pointer;border-radius:4px 4px 0 0;transition:.15s}
 .tab-btn.active{background:var(--card);color:var(--text);font-weight:600}
 .tab-btn:hover{background:var(--border)}
 .tab-content{display:none}
 .tab-content.active{display:block}
-/* Buttons */
 .btn{background:var(--accent);color:#fff;border:none;border-radius:4px;padding:8px 14px;font-size:12px;font-weight:600;cursor:pointer;transition:.15s;display:inline-flex;align-items:center;justify-content:center;gap:6px}
 .btn:hover{background:var(--accent-h)}
 .btn:disabled{opacity:.5;cursor:not-allowed}
 .btn-sm{padding:5px 10px;font-size:11px}
 .btn-block{width:100%;padding:10px;margin-top:8px}
-/* Right panel */
 .right{flex:1;display:flex;flex-direction:column;min-width:0}
 .toolbar{background:var(--bg2);padding:6px 12px;border-radius:6px;display:flex;align-items:center;gap:6px;margin-bottom:6px}
 .toolbar h2{font-size:14px;font-weight:700;margin-right:12px}
@@ -93,16 +84,12 @@ input::placeholder,textarea::placeholder{color:#555}
 .output .medium{color:var(--yellow)}
 .output .hard{color:var(--red)}
 .output .multi{color:var(--yellow)}
-/* Status */
 .status{font-size:11px;color:var(--dim);margin-top:4px}
-/* Spinner */
 .spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--dim);border-top-color:var(--accent);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:6px}
 @keyframes spin{to{transform:rotate(360deg)}}
-/* Scrollbar */
 .output::-webkit-scrollbar{width:6px}
 .output::-webkit-scrollbar-track{background:transparent}
 .output::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:3px}
-/* Error flash */
 .error{background:var(--red);color:#fff;padding:8px 12px;border-radius:4px;margin-bottom:6px;font-size:12px;display:none}
 </style>
 </head>
@@ -115,10 +102,8 @@ input::placeholder,textarea::placeholder{color:#555}
 
 <div class="body">
 
-  <!-- LEFT PANEL -->
   <div class="left" id="leftPanel">
 
-    <!-- API Config -->
     <div class="section">&#128273; AI Provider &amp; API Key<hr></div>
     <div class="card">
       <div class="row">
@@ -163,7 +148,6 @@ input::placeholder,textarea::placeholder{color:#555}
       </div>
     </div>
 
-    <!-- Input Source -->
     <div class="section">&#128229; Input Source<hr></div>
     <div class="card" style="padding:0">
       <div class="tabs" id="inputTabs">
@@ -173,7 +157,6 @@ input::placeholder,textarea::placeholder{color:#555}
         <button class="tab-btn" data-tab="html">&#128221; Raw HTML</button>
       </div>
 
-      <!-- Tab: URL -->
       <div class="tab-content active" id="tab-url" style="padding:10px 12px">
         <label style="display:block;margin-bottom:4px;min-width:auto">Page URL (HTML tutorial or direct PDF link):</label>
         <input type="text" id="webUrl" placeholder="https://docs.python.org/3/tutorial/">
@@ -183,7 +166,6 @@ input::placeholder,textarea::placeholder{color:#555}
         </div>
       </div>
 
-      <!-- Tab: PDF URL -->
       <div class="tab-content" id="tab-pdfurl" style="padding:10px 12px">
         <label style="display:block;margin-bottom:4px;min-width:auto">Direct PDF URL:</label>
         <input type="text" id="pdfUrl" placeholder="https://example.com/tutorial.pdf">
@@ -199,7 +181,6 @@ input::placeholder,textarea::placeholder{color:#555}
         </div>
       </div>
 
-      <!-- Tab: Local PDF -->
       <div class="tab-content" id="tab-pdffile" style="padding:10px 12px">
         <label style="display:block;margin-bottom:4px;min-width:auto">PDF file:</label>
         <input type="file" id="pdfFile" accept=".pdf">
@@ -207,7 +188,6 @@ input::placeholder,textarea::placeholder{color:#555}
         <input type="text" id="pdfFileTitle" placeholder="e.g. Flask Guide">
       </div>
 
-      <!-- Tab: Raw HTML -->
       <div class="tab-content" id="tab-html" style="padding:10px 12px">
         <label style="display:block;margin-bottom:4px;min-width:auto">Paste HTML content:</label>
         <textarea id="rawHtml" rows="5" style="resize:vertical;font-family:Consolas,monospace;font-size:11px"></textarea>
@@ -216,7 +196,6 @@ input::placeholder,textarea::placeholder{color:#555}
       </div>
     </div>
 
-    <!-- Generation Options -->
     <div class="section">&#9881;&#65039; Generation Options<hr></div>
     <div class="card">
       <div class="row">
@@ -256,7 +235,6 @@ input::placeholder,textarea::placeholder{color:#555}
     <div class="status" id="status">Ready</div>
   </div>
 
-  <!-- RIGHT PANEL -->
   <div class="right">
     <div class="toolbar">
       <h2>&#128203; Output</h2>
@@ -277,7 +255,6 @@ input::placeholder,textarea::placeholder{color:#555}
 </div>
 
 <script>
-// ── Tab switching ──
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
@@ -287,21 +264,13 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 });
 
-// ── Provider → default model ──
 document.querySelectorAll('input[name="provider"]').forEach(rb => {
   rb.addEventListener('change', () => {
     const map = { anthropic: 'claude-opus-4-6', openai: 'gpt-4o', openrouter: 'meta-llama/llama-3.3-70b-instruct:free' };
-    const modelInput = document.getElementById('model');
-    const dl = document.getElementById('mcqModelList');
-    // Show/hide relevant options based on provider
-    const show = { anthropic: ['claude-opus-4-6','claude-sonnet-4-6','claude-haiku-3-5'],
-                   openai: ['openai/gpt-4o','openai/gpt-4o-mini','openai/gpt-oss-120b:free','openai/gpt-oss-20b:free'],
-                   openrouter: Array.from(dl.options).map(o => o.value) };
-    modelInput.value = map[rb.value] || '';
+    document.getElementById('model').value = map[rb.value] || '';
   });
 });
 
-// ── Local PDF file picker → title auto-fill ──
 document.getElementById('pdfFile').addEventListener('change', e => {
   const file = e.target.files[0];
   if (!file) return;
@@ -311,7 +280,6 @@ document.getElementById('pdfFile').addEventListener('change', e => {
   }
 });
 
-// ── Custom instructions placeholder ──
 const ciEl = document.getElementById('customInstructions');
 const CI_PLACEHOLDER = ciEl.value;
 ciEl.addEventListener('focus', () => {
@@ -322,7 +290,6 @@ ciEl.addEventListener('blur', () => {
 });
 if (ciEl.value === CI_PLACEHOLDER) ciEl.style.color = '#94a3b8';
 
-// ── Generate ──
 document.getElementById('generateBtn').addEventListener('click', generate);
 
 async function generate() {
@@ -355,7 +322,6 @@ async function generate() {
     tab: tab,
   };
 
-  // Tab-specific fields
   if (tab === 'url') {
     payload.url = document.getElementById('webUrl').value;
     payload.enrich_pdfs = document.getElementById('enrichPdfs').checked;
@@ -368,7 +334,6 @@ async function generate() {
     const fileInput = document.getElementById('pdfFile');
     if (!fileInput.files[0]) { showError('Please select a PDF file.'); return; }
     payload.pdf_title = document.getElementById('pdfFileTitle').value;
-    // Read file as base64
     const b64 = await readFileAsBase64(fileInput.files[0]);
     payload.pdf_data = b64;
     payload.pdf_filename = fileInput.files[0].name;
@@ -414,8 +379,7 @@ function showError(msg) {
   document.getElementById('statsBar').textContent = 'Error';
   document.getElementById('generateBtn').disabled = false;
   document.getElementById('generateBtn').innerHTML = '&#9889; Generate MCQs';
-  const output = document.getElementById('output');
-  output.innerHTML = '<span class="meta">ERROR:\n' + escapeHtml(msg) + '</span>';
+  document.getElementById('output').innerHTML = '<span class="meta">ERROR:\n' + escapeHtml(msg) + '</span>';
 }
 
 function renderResult(data) {
@@ -441,6 +405,7 @@ function renderResult(data) {
     + escapeHtml(s.content_summary);
   status.textContent = 'Done — ' + s.total_questions + ' questions generated.';
   window._mcqData = data.mcq;
+  window._summaryData = data.summary;
 }
 
 function renderPretty(mcq, el) {
@@ -479,14 +444,12 @@ function escapeHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-// ── Format toggle ──
 document.querySelectorAll('input[name="format"]').forEach(rb => {
   rb.addEventListener('change', () => {
     if (window._mcqData) renderResult({ mcq: window._mcqData, summary: window._summaryData });
   });
 });
 
-// ── Copy ──
 document.getElementById('copyBtn').addEventListener('click', async () => {
   const text = document.getElementById('output').textContent;
   if (!text) return;
@@ -500,7 +463,6 @@ document.getElementById('copyBtn').addEventListener('click', async () => {
   }
 });
 
-// ── Clear ──
 document.getElementById('clearBtn').addEventListener('click', () => {
   document.getElementById('output').innerHTML = '';
   document.getElementById('statsBar').textContent = 'No results yet';
@@ -508,7 +470,6 @@ document.getElementById('clearBtn').addEventListener('click', () => {
   window._mcqData = null;
 });
 
-// ── Save JSON ──
 document.getElementById('saveJsonBtn').addEventListener('click', () => {
   if (!window._mcqData) { showError('Generate questions first.'); return; }
   const title = (window._mcqData.page_title || 'mcq').replace(/[\\/*?:"<>|]/g, '_').slice(0,30);
@@ -525,136 +486,181 @@ document.getElementById('saveJsonBtn').addEventListener('click', () => {
 </html>"""
 
 
-# ── API Route ─────────────────────────────────────────────────────────────
+# ── HTTP request handler (stdlib only, no Flask) ─────────────────────────
 
-@app.route("/")
-def index():
-    return render_template_string(TEMPLATE)
+class Handler(BaseHTTPRequestHandler):
+    """Serve the HTML page and handle /api/generate POST requests."""
 
+    def do_GET(self):
+        if self.path == "/":
+            self._send_html(200, TEMPLATE)
+        else:
+            self._send_json(404, {"error": "Not found"})
 
-@app.route("/api/generate", methods=["POST"])
-def api_generate():
-    data = request.get_json(force=True)
-    if not data:
-        return jsonify(error="Empty request"), 400
+    def do_POST(self):
+        if self.path == "/api/generate":
+            self._handle_generate()
+        else:
+            self._send_json(404, {"error": "Not found"})
 
-    try:
-        from html2mcq import MCQGenerator
+    # ── Generate handler ──────────────────────────────────────────────────
 
-        api_key = (data.get("api_key") or "").strip()
-        provider = data.get("provider", "openrouter")
-        model = data.get("model", "")
-        n = int(data.get("n", 10))
-        batch_size = int(data.get("batch_size", 10))
-        diff = data.get("difficulty_mix") or None
-        topics_raw = data.get("focus_topics") or ""
-        topics = [t.strip() for t in topics_raw.split(",") if t.strip()] or None
-        ci = data.get("custom_instructions") or None
-        ocr_model = data.get("ocr_model", "pytesseract")
-        pdf_backend = data.get("pdf_backend", "auto_detect")
-        tab = data.get("tab", "url")
+    def _handle_generate(self):
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            if length == 0:
+                return self._send_json(400, {"error": "Empty request"})
+            body = self.rfile.read(length)
+            data = json.loads(body)
+        except (json.JSONDecodeError, ValueError, TypeError):
+            return self._send_json(400, {"error": "Invalid JSON"})
 
-        env_map = {
-            "anthropic": "ANTHROPIC_API_KEY",
-            "openai": "OPENAI_API_KEY",
-            "openrouter": "OPENROUTER_API_KEY",
-        }
-        if not api_key:
-            api_key = os.environ.get(env_map.get(provider, ""), "")
-        if not api_key:
-            raise ValueError(f"No API key. Enter it above or set {env_map[provider]} env var.")
+        try:
+            from html2mcq import MCQGenerator
 
-        gen = MCQGenerator(
-            api_key=api_key,
-            provider=provider,
-            mcq_model=model,
-            batch_size=batch_size,
-            pdf_backend=pdf_backend,
-            ocr_model=ocr_model,
-            method="twostep",
-            custom_instructions=ci,
-        )
+            api_key = (data.get("api_key") or "").strip()
+            provider = data.get("provider", "openrouter")
+            model = data.get("model", "")
+            n = int(data.get("n", 10))
+            batch_size = int(data.get("batch_size", 10))
+            diff = data.get("difficulty_mix") or None
+            topics_raw = data.get("focus_topics") or ""
+            topics = [t.strip() for t in topics_raw.split(",") if t.strip()] or None
+            ci = data.get("custom_instructions") or None
+            ocr_model = data.get("ocr_model", "pytesseract")
+            pdf_backend = data.get("pdf_backend", "auto_detect")
+            tab = data.get("tab", "url")
 
-        if tab == "url":
-            url = data.get("url", "").strip()
-            if not url:
-                return jsonify(error="Please enter a URL."), 400
-            mcq = gen.from_url(
-                url, n=n,
-                difficulty_mix=diff, focus_topics=topics,
-                enrich_pdfs=bool(data.get("enrich_pdfs", True)),
-                enrich_images=bool(data.get("enrich_images", True)),
+            env_map = {
+                "anthropic": "ANTHROPIC_API_KEY",
+                "openai": "OPENAI_API_KEY",
+                "openrouter": "OPENROUTER_API_KEY",
+            }
+            if not api_key:
+                api_key = os.environ.get(env_map.get(provider, ""), "")
+            if not api_key:
+                raise ValueError(f"No API key. Enter it above or set {env_map[provider]} env var.")
+
+            gen = MCQGenerator(
+                api_key=api_key,
+                provider=provider,
+                mcq_model=model,
+                batch_size=batch_size,
+                pdf_backend=pdf_backend,
+                ocr_model=ocr_model,
+                method="twostep",
                 custom_instructions=ci,
             )
-        elif tab == "pdfurl":
-            url = data.get("url", "").strip()
-            if not url:
-                return jsonify(error="Please enter a PDF URL."), 400
-            mcq = gen.from_pdf_url(
-                url, n=n,
-                pdf_title=data.get("pdf_title", "").strip(),
-                difficulty_mix=diff, focus_topics=topics,
-                custom_instructions=ci,
-            )
-        elif tab == "pdffile":
-            pdf_data = data.get("pdf_data")
-            if not pdf_data:
-                return jsonify(error="Please select a PDF file."), 400
-            pdf_bytes = __import__("base64").b64decode(pdf_data)
-            # Write to temp file
-            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
-                f.write(pdf_bytes)
-                tmp_path = f.name
-            try:
-                mcq = gen.from_pdf_path(
-                    tmp_path, n=n,
+
+            if tab == "url":
+                url = data.get("url", "").strip()
+                if not url:
+                    return self._send_json(400, {"error": "Please enter a URL."})
+                mcq = gen.from_url(
+                    url, n=n,
+                    difficulty_mix=diff, focus_topics=topics,
+                    enrich_pdfs=bool(data.get("enrich_pdfs", True)),
+                    enrich_images=bool(data.get("enrich_images", True)),
+                    custom_instructions=ci,
+                )
+            elif tab == "pdfurl":
+                url = data.get("url", "").strip()
+                if not url:
+                    return self._send_json(400, {"error": "Please enter a PDF URL."})
+                mcq = gen.from_pdf_url(
+                    url, n=n,
                     pdf_title=data.get("pdf_title", "").strip(),
                     difficulty_mix=diff, focus_topics=topics,
                     custom_instructions=ci,
                 )
-            finally:
+            elif tab == "pdffile":
+                pdf_data = data.get("pdf_data")
+                if not pdf_data:
+                    return self._send_json(400, {"error": "Please select a PDF file."})
+                pdf_bytes = base64.b64decode(pdf_data)
+                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+                    f.write(pdf_bytes)
+                    tmp_path = f.name
                 try:
-                    os.unlink(tmp_path)
-                except Exception:
-                    pass
-        elif tab == "html":
-            html = data.get("html", "").strip()
-            if not html:
-                return jsonify(error="Please paste some HTML content."), 400
-            mcq = gen.from_html(
-                html, n=n,
-                base_url=data.get("base_url", "").strip(),
-                difficulty_mix=diff, focus_topics=topics,
-                enrich_pdfs=False, enrich_images=True,
-                custom_instructions=ci,
-            )
-        else:
-            return jsonify(error=f"Unknown tab: {tab}"), 400
+                    mcq = gen.from_pdf_path(
+                        tmp_path, n=n,
+                        pdf_title=data.get("pdf_title", "").strip(),
+                        difficulty_mix=diff, focus_topics=topics,
+                        custom_instructions=ci,
+                    )
+                finally:
+                    try:
+                        os.unlink(tmp_path)
+                    except Exception:
+                        pass
+            elif tab == "html":
+                html = data.get("html", "").strip()
+                if not html:
+                    return self._send_json(400, {"error": "Please paste some HTML content."})
+                mcq = gen.from_html(
+                    html, n=n,
+                    base_url=data.get("base_url", "").strip(),
+                    difficulty_mix=diff, focus_topics=topics,
+                    enrich_pdfs=False, enrich_images=True,
+                    custom_instructions=ci,
+                )
+            else:
+                return self._send_json(400, {"error": f"Unknown tab: {tab}"})
 
-        easy = sum(1 for q in mcq.questions if q.difficulty == "easy")
-        medium = sum(1 for q in mcq.questions if q.difficulty == "medium")
-        hard = sum(1 for q in mcq.questions if q.difficulty == "hard")
-        multi = sum(1 for q in mcq.questions if q.multi)
+            easy = sum(1 for q in mcq.questions if q.difficulty == "easy")
+            medium = sum(1 for q in mcq.questions if q.difficulty == "medium")
+            hard = sum(1 for q in mcq.questions if q.difficulty == "hard")
+            multi = sum(1 for q in mcq.questions if q.multi)
 
-        return jsonify(
-            mcq=json.loads(mcq.to_json()),
-            summary={
-                "total_questions": mcq.total_questions,
-                "easy": easy,
-                "medium": medium,
-                "hard": hard,
-                "multi": multi,
-                "exam_time": mcq.total_exam_time,
-                "content_summary": mcq.content_summary,
-            },
-        )
+            return self._send_json(200, {
+                "mcq": json.loads(mcq.to_json()),
+                "summary": {
+                    "total_questions": mcq.total_questions,
+                    "easy": easy,
+                    "medium": medium,
+                    "hard": hard,
+                    "multi": multi,
+                    "exam_time": mcq.total_exam_time,
+                    "content_summary": mcq.content_summary,
+                },
+            })
 
-    except Exception as e:
-        return jsonify(error=str(e)), 500
+        except Exception as e:
+            traceback.print_exc()
+            return self._send_json(500, {"error": str(e)})
+
+    # ── Response helpers ──────────────────────────────────────────────────
+
+    def _send_html(self, status, html):
+        self.send_response(status)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(html.encode("utf-8"))
+
+    def _send_json(self, status, data):
+        body = json.dumps(data, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, fmt, *args):
+        """Quieter logging — skip static asset noise."""
+        sys.stderr.write(f"[html2mcq] {args[0]} {args[1]} {args[2]}\n")
 
 
 # ── Entry point ───────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    print("🌐 html2mcq Web UI → http://localhost:5000")
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    server = HTTPServer(("0.0.0.0", port), Handler)
+    print(f"🌐 html2mcq Web UI → http://localhost:{port}")
+    print("   (zero dependencies — stdlib only)")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nShutting down.")
+        server.server_close()
