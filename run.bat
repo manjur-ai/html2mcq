@@ -1,4 +1,5 @@
 @echo off
+start http://localhost:5000
 python html2mcq_web.py
 if errorlevel 1 (
     echo.
