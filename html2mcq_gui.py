@@ -3,7 +3,6 @@ html2mcq_gui.py — Tkinter desktop app for html2mcq
 ====================================================
 A full-featured GUI to generate MCQ questions from:
   • HTML page URL
-  • YouTube video URL
   • PDF URL
   • Local PDF file
   • Raw HTML paste
@@ -66,7 +65,7 @@ class Html2MCQApp(tk.Tk):
         header.pack_propagate(False)
         tk.Label(header, text="  ⚡ html2mcq", font=("Segoe UI", 14, "bold"),
                  bg=ACCENT, fg="white").pack(side="left", padx=16, pady=10)
-        tk.Label(header, text="v1.3.0  •  AI-powered MCQ Generator",
+        tk.Label(header, text="v2.0.0  •  AI-powered MCQ Generator",
                  font=("Segoe UI", 9), bg=ACCENT, fg="#ddd6fe").pack(side="left", pady=10)
 
         # ── Main body: left config + right output
@@ -254,6 +253,7 @@ class Html2MCQApp(tk.Tk):
         ocr_combo.pack(side="left", fill="x", expand=True)
 
         # Custom instructions
+        tk.Label(opt_card, text="Custom instructions",
                  font=FONT, bg=CARD, fg=TEXT_DIM).pack(anchor="w", pady=(0,4))
         self.custom_instructions_text = tk.Text(
             opt_card, height=4, font=FONT,
@@ -404,10 +404,11 @@ class Html2MCQApp(tk.Tk):
         gen = MCQGenerator(
             api_key=api_key,
             provider=provider,
-            model=model,
+            mcq_model=model,
             batch_size=batch,
             pdf_backend=self.pdf_backend_var.get(),
             ocr_model=self.ocr_model_var.get(),
+            method="twostep",
             custom_instructions=custom_instructions,
         )
 
