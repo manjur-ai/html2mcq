@@ -56,7 +56,6 @@ Rules:
     - "explaination" matches the selected answer(s)
     - no unsupported fact is included
 11. Drop any question that fails validation.
-12. If requested question count is 999, generate as many high-quality questions as the content supports and cover all distinct valid topics without inventing extra questions.
 """
 
 
@@ -149,7 +148,10 @@ def build_user_prompt(
             sections.append(f"{header}\n{b.content}")
         sections.append("")
 
-    instructions = [f"\nGenerate exactly {n} MCQ questions based on the content above."]
+    if n == 999:
+        instructions = ["\nBased on the content above, generate as many high-quality MCQ questions as the content supports and cover all distinct valid topics without inventing extra questions."]
+    else:
+        instructions = [f"\nGenerate exactly {n} MCQ questions based on the content above."]
 
     if difficulty_mix:
         instructions.append(f"Difficulty distribution: {difficulty_mix}")
