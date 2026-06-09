@@ -164,30 +164,65 @@ def _make_backend(provider: str, api_key: str, mcq_model: str, **kwargs):
 
 
 class _OverrideContext:
-    """Temporarily overrides backend and/or prompt_log_path on MCQGenerator."""
-    def __init__(self, gen, api_key_override, prompt_log_path):
+    """Temporarily overrides backend, prompt_log_path, ocr_model, and/or mcq_model on MCQGenerator."""
+    def __init__(self, gen, api_key_override, prompt_log_path,
+                 ocr_model=None, mcq_model=None):
         self.gen = gen
         self.api_key = api_key_override
         self.log_path = prompt_log_path
-        self._orig_backend = None
-        self._orig_log = None
+        self.ocr_model = ocr_model
+        self.mcq_model = mcq_model
+        self._saved = {}
 
     def __enter__(self):
         if self.api_key is not None:
-            self._orig_backend = self.gen.backend
+            self._saved['backend'] = self.gen.backend
             self.gen.backend = _make_backend(
                 self.gen.provider, self.api_key, self.gen.mcq_model,
             )
         if self.log_path is not None:
-            self._orig_log = getattr(self.gen, "prompt_log_path", None)
+            self._saved['prompt_log_path'] = getattr(self.gen, "prompt_log_path", None)
             self.gen.prompt_log_path = self.log_path
+        if self.ocr_model is not None:
+            ocr_val = self.ocr_model.lower()
+            if hasattr(self.gen, 'image_ocr_extractor'):
+                self._saved['image_ocr_extractor.backend'] = self.gen.image_ocr_extractor.backend
+                self.gen.image_ocr_extractor.backend = ocr_val
+            if hasattr(self.gen, 'pdf_extractor'):
+                self._saved['pdf_extractor.scanned_backend'] = self.gen.pdf_extractor.scanned_backend
+                self.gen.pdf_extractor.scanned_backend = ocr_val
+        if self.mcq_model is not None:
+            _DEFAULT_VISION = "google/gemini-2.5-flash-lite"
+            _vis_model = self.mcq_model if self.mcq_model not in ("", "auto") else _DEFAULT_VISION
+            if hasattr(self.gen, 'image_ocr_extractor'):
+                self._saved['image_ocr_extractor.vision_model'] = self.gen.image_ocr_extractor.vision_model
+                self.gen.image_ocr_extractor.vision_model = _vis_model
+            if hasattr(self.gen, 'pdf_extractor') and hasattr(self.gen.pdf_extractor, 'vision_model'):
+                self._saved['pdf_extractor.vision_model'] = self.gen.pdf_extractor.vision_model
+                self.gen.pdf_extractor.vision_model = _vis_model
+            if hasattr(self.gen, '_vision_model'):
+                self._saved['_vision_model'] = self.gen._vision_model
+                self.gen._vision_model = _vis_model
+            _key = getattr(self.gen, '_resolved_api_key', None) or "ollama"
+            self._saved['backend'] = self.gen.backend
+            self.gen.backend = _make_backend(self.gen.provider, _key, self.mcq_model)
         return self
 
     def __exit__(self, *args):
-        if self._orig_backend is not None:
-            self.gen.backend = self._orig_backend
-        if self.log_path is not None:
-            self.gen.prompt_log_path = self._orig_log
+        if 'backend' in self._saved:
+            self.gen.backend = self._saved['backend']
+        if 'prompt_log_path' in self._saved:
+            self.gen.prompt_log_path = self._saved['prompt_log_path']
+        if 'image_ocr_extractor.backend' in self._saved:
+            self.gen.image_ocr_extractor.backend = self._saved['image_ocr_extractor.backend']
+        if 'pdf_extractor.scanned_backend' in self._saved:
+            self.gen.pdf_extractor.scanned_backend = self._saved['pdf_extractor.scanned_backend']
+        if 'image_ocr_extractor.vision_model' in self._saved:
+            self.gen.image_ocr_extractor.vision_model = self._saved['image_ocr_extractor.vision_model']
+        if 'pdf_extractor.vision_model' in self._saved:
+            self.gen.pdf_extractor.vision_model = self._saved['pdf_extractor.vision_model']
+        if '_vision_model' in self._saved:
+            self.gen._vision_model = self._saved['_vision_model']
 
 
 # ── MCQGenerator ──────────────────────────────────────────────────────────────
@@ -314,8 +349,10 @@ class MCQGenerator:
                     f"No API key supplied. Pass api_key= or set "
                     f"{self.ENV_KEYS.get(self.provider, 'YOUR_API_KEY')} env var."
                 )
+        self._resolved_api_key = _key
         self.backend = _make_backend(self.provider, _key, self.mcq_model, **backend_kwargs)
         if api_key_override:
+            self._resolved_api_key = api_key_override
             self.backend = _make_backend(self.provider, api_key_override, self.mcq_model, **backend_kwargs)
         self.batch_size = max(1, batch_size)
         self.max_tokens = max_tokens
@@ -377,13 +414,11 @@ class MCQGenerator:
     # ── Public API ────────────────────────────────────────────────────────────
 
     def _with_overrides(self, api_key_override: Optional[str] = None,
-                        prompt_log_path: Optional[str] = None):
-        """Context manager for per-call overrides. Usage::
-
-            with self._with_overrides(api_key_override, prompt_log_path):
-                # existing logic …
-        """
-        return _OverrideContext(self, api_key_override, prompt_log_path)
+                        prompt_log_path: Optional[str] = None,
+                        ocr_model: Optional[str] = None,
+                        mcq_model: Optional[str] = None):
+        return _OverrideContext(self, api_key_override, prompt_log_path,
+                                ocr_model=ocr_model, mcq_model=mcq_model)
 
 
 
@@ -400,28 +435,11 @@ class MCQGenerator:
         custom_instructions: Optional[str] = None,
         api_key_override: Optional[str] = None,
         prompt_log_path: Optional[str] = None,
+        ocr_model: Optional[str] = None,
+        mcq_model: Optional[str] = None,
     ) -> MCQSet:
-        """
-        Generate *n* MCQs from raw HTML.
-
-        Parameters
-        ----------
-        html : str
-            Raw HTML content.
-        n : int
-            Number of questions.
-        base_url : str
-            Used to resolve relative links inside the HTML.
-        enrich_pdfs : bool
-            Auto-download and extract PDF links found in page (default True).
-        enrich_images : bool
-            Auto-download and OCR images found in page (default True).
-        api_key_override : str, optional
-            Temporary API key for this call only.
-        prompt_log_path : str, optional
-            Path to dump prompts for this call. Use "-" or "stdout" for terminal.
-        """
-        with self._with_overrides(api_key_override, prompt_log_path):
+        with self._with_overrides(api_key_override, prompt_log_path,
+                                  ocr_model=ocr_model, mcq_model=mcq_model):
             title, blocks = self.extractor.from_html(html, base_url=base_url)
             if enrich_pdfs:
                 blocks = self.pdf_extractor.enrich_blocks(blocks)
@@ -459,12 +477,11 @@ class MCQGenerator:
         custom_instructions: Optional[str] = None,
         api_key_override: Optional[str] = None,
         prompt_log_path: Optional[str] = None,
+        ocr_model: Optional[str] = None,
+        mcq_model: Optional[str] = None,
     ) -> MCQSet:
-        """
-        Generate MCQs from pre-extracted ContentBlocks.
-        Useful when you've already parsed the page yourself.
-        """
-        with self._with_overrides(api_key_override, prompt_log_path):
+        with self._with_overrides(api_key_override, prompt_log_path,
+                                  ocr_model=ocr_model, mcq_model=mcq_model):
             all_qs, _ = self._generate(
                 blocks=blocks,
                 n=n,
@@ -487,25 +504,11 @@ class MCQGenerator:
         custom_instructions: Optional[str] = None,
         api_key_override: Optional[str] = None,
         prompt_log_path: Optional[str] = None,
+        ocr_model: Optional[str] = None,
+        mcq_model: Optional[str] = None,
     ) -> MCQSet:
-        """
-        Fetch the page at *url*, extract content, and generate *n* MCQs.
-
-        Parameters
-        ----------
-        url : str
-            Tutorial page URL.
-        n : int
-            Number of MCQ questions to generate.
-        enrich_pdfs : bool
-            If True (default), automatically download and extract any PDF links
-            found in the page.
-        api_key_override : str, optional
-            Temporary API key for this call only.
-        prompt_log_path : str, optional
-            Path to dump prompts. Use "-" or "stdout" for terminal.
-        """
-        with self._with_overrides(api_key_override, prompt_log_path):
+        with self._with_overrides(api_key_override, prompt_log_path,
+                                  ocr_model=ocr_model, mcq_model=mcq_model):
             title, blocks = self.extractor.from_url(url)
 
             if enrich_pdfs:
@@ -543,24 +546,11 @@ class MCQGenerator:
         custom_instructions: Optional[str] = None,
         api_key_override: Optional[str] = None,
         prompt_log_path: Optional[str] = None,
+        ocr_model: Optional[str] = None,
+        mcq_model: Optional[str] = None,
     ) -> MCQSet:
-        """
-        Generate MCQs directly from one or more image URLs.
-
-        Parameters
-        ----------
-        urls : str or list of str
-            One or more image URLs.
-        n : int
-            Number of questions.
-        title : str
-            Title for the MCQSet (default "Images").
-        api_key_override : str, optional
-            Temporary API key for this call only.
-        prompt_log_path : str, optional
-            Path to dump prompts. Use "-" or "stdout" for terminal.
-        """
-        with self._with_overrides(api_key_override, prompt_log_path):
+        with self._with_overrides(api_key_override, prompt_log_path,
+                                  ocr_model=ocr_model, mcq_model=mcq_model):
             if isinstance(urls, str):
                 urls = [urls]
             blocks = [ContentBlock(type="image", content=u) for u in urls]
@@ -590,24 +580,11 @@ class MCQGenerator:
         custom_instructions: Optional[str] = None,
         api_key_override: Optional[str] = None,
         prompt_log_path: Optional[str] = None,
+        ocr_model: Optional[str] = None,
+        mcq_model: Optional[str] = None,
     ) -> MCQSet:
-        """
-        Generate MCQs directly from one or more local image files.
-
-        Parameters
-        ----------
-        paths : str or list of str
-            One or more local image file paths.
-        n : int
-            Number of questions.
-        title : str
-            Title for the MCQSet (default "Images").
-        api_key_override : str, optional
-            Temporary API key for this call only.
-        prompt_log_path : str, optional
-            Path to dump prompts. Use "-" or "stdout" for terminal.
-        """
-        with self._with_overrides(api_key_override, prompt_log_path):
+        with self._with_overrides(api_key_override, prompt_log_path,
+                                  ocr_model=ocr_model, mcq_model=mcq_model):
             if isinstance(paths, str):
                 paths = [paths]
             blocks = []
@@ -642,24 +619,11 @@ class MCQGenerator:
         custom_instructions: Optional[str] = None,
         api_key_override: Optional[str] = None,
         prompt_log_path: Optional[str] = None,
+        ocr_model: Optional[str] = None,
+        mcq_model: Optional[str] = None,
     ) -> MCQSet:
-        """
-        Generate MCQs from one or more PDF URLs.
-
-        Parameters
-        ----------
-        urls : str or list of str
-            One or more direct PDF URLs.
-        n : int
-            Number of questions to generate.
-        pdf_title : str, optional
-            Title for the MCQSet. When multiple PDFs, defaults to "PDFs".
-        api_key_override : str, optional
-            Temporary API key for this call only.
-        prompt_log_path : str, optional
-            Path to dump prompts. Use "-" or "stdout" for terminal.
-        """
-        with self._with_overrides(api_key_override, prompt_log_path):
+        with self._with_overrides(api_key_override, prompt_log_path,
+                                  ocr_model=ocr_model, mcq_model=mcq_model):
             if isinstance(urls, str):
                 urls = [urls]
             title = pdf_title or (urls[0].split("/")[-1].replace(".pdf", "").replace("-", " ").replace("_", " ").title()
@@ -706,24 +670,11 @@ class MCQGenerator:
         custom_instructions: Optional[str] = None,
         api_key_override: Optional[str] = None,
         prompt_log_path: Optional[str] = None,
+        ocr_model: Optional[str] = None,
+        mcq_model: Optional[str] = None,
     ) -> MCQSet:
-        """
-        Generate MCQs from one or more local PDF files.
-
-        Parameters
-        ----------
-        paths : str or list of str
-            One or more local PDF file paths.
-        n : int
-            Number of questions to generate.
-        pdf_title : str, optional
-            Title for the MCQSet. When multiple PDFs, defaults to "PDFs".
-        api_key_override : str, optional
-            Temporary API key for this call only.
-        prompt_log_path : str, optional
-            Path to dump prompts. Use "-" or "stdout" for terminal.
-        """
-        with self._with_overrides(api_key_override, prompt_log_path):
+        with self._with_overrides(api_key_override, prompt_log_path,
+                                  ocr_model=ocr_model, mcq_model=mcq_model):
             if isinstance(paths, str):
                 paths = [paths]
             title = pdf_title or (Path(paths[0]).stem.replace("-", " ").replace("_", " ").title()
