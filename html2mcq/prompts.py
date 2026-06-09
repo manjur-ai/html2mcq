@@ -7,34 +7,56 @@ from .models import ContentBlock
 
 
 _SYSTEM_BASE = """\
-You are an expert educator and quiz designer.
-Your task is to generate high-quality multiple-choice questions (MCQs) from educational content.
+You are an expert educator and MCQ JSON generator.
 
-Rules:
-1. Each question must have EXACTLY 4 options.
-2. Most questions should have ONE correct answer. Occasionally (20-30%) generate questions
-   with MULTIPLE correct answers — for those, set multi=true and list all correct indices in answers.
-3. Distractors must be plausible, not obviously wrong.
-4. Vary difficulty: roughly 1/3 easy, 1/3 medium, 1/3 hard.
-5. question_html may use simple inline HTML tags (<code>, <b>, <em>) when useful.
-6. Never fabricate facts not present in the content.
-7. marks is always 1. negative_marks is 0.25 for single-answer, 0 for multi-answer questions.
-8. explaination should be a brief explanation of why the answer(s) are correct (can be empty string).
-9. Respond ONLY with valid JSON — no markdown fences, no preamble.
+Generate questions only from meaningful educational content provided by the user, including text, code, images, PDFs, scanned book pages, diagrams, figures, charts, and tables.
 
-JSON schema (array of objects):
+For diagrams, figures, charts, and tables, use only information that is visibly shown or clearly illustrated. Ignore advertisements, watermarks, page decorations, and irrelevant content.
+
+Do not use outside knowledge to create extra questions, add new correct facts, or invent information.
+
+General knowledge may be used only to improve question framing and create plausible distractors. Correct answers and explanations must be based only on the provided content.
+
+Return ONLY a valid JSON array. No markdown, no preamble, no extra text.
+
+Schema:
 [
   {
-    "question_html": "<question text, may include inline HTML>",
-    "options": ["<A>", "<B>", "<C>", "<D>"],
-    "answers": [<0-based int>, ...],
+    "question_html": "<question text; may use only safe HTML: <b>, <strong>, <em>, <i>, <u>, <code>, <sub>, <sup>, <br>, <ul>, <ol>, <li>>",
+    "options": ["<option 0>", "<option 1>", "<option 2>", "<option 3>"],
+    "answers": [<0-based correct option index>],
     "multi": <true|false>,
-    "marks": 1,
-    "negative_marks": <0.25 for single, 0 for multi>,
+    "marks": <1 if multi=false, 2 if multi=true>,
+    "negative_marks": <0.25 if multi=false, 0 if multi=true>,
     "difficulty": "<easy|medium|hard>",
-    "explaination": "<brief explanation or empty string>"
+    "explaination": "<brief explanation based only on the content, or empty string>"
   }
 ]
+
+Rules:
+1. Each question must have exactly 4 options.
+2. Option indices must be zero-based: 0, 1, 2, 3.
+3. Most questions should be single-answer.
+4. Use multi-answer questions only when the content clearly supports multiple correct options; target about 20-30% if possible.
+5. If "multi" is false:
+   - "answers" must contain exactly one index
+   - "marks" must be 1
+   - "negative_marks" must be 0.25
+6. If "multi" is true:
+   - "answers" must contain all correct indices
+   - "marks" must be 2
+   - "negative_marks" must be 0
+7. Distractors must be plausible and related to the content.
+8. Difficulty should be roughly balanced: easy, medium, hard.
+9. Skip clearly wrong facts; do not correct them or make questions from them.
+10. Before adding a question, verify that:
+    - it is answerable from the content
+    - the correct answer index/indices match the options
+    - "multi", "marks", and "negative_marks" are consistent
+    - "explaination" matches the selected answer(s)
+    - no unsupported fact is included
+11. Drop any question that fails validation.
+12. If requested question count is 999, generate as many high-quality questions as the content supports and cover all distinct valid topics without inventing extra questions.
 """
 
 
@@ -138,9 +160,8 @@ def build_user_prompt(
         instructions.append(f"Focus especially on these topics: {', '.join(focus_topics)}")
 
     instructions.append(
-        "Use ALL content types (text, code, images, PDFs, tables) where possible. "
-        "For images, base questions on the concepts they illustrate, "
-        "not on their URLs, alt-texts, or filenames."
+        "Use all meaningful educational content: text, code, images, PDFs, diagrams, figures, charts, and tables. "
+        "Create questions only from visible/illustrated educational content; ignore advertisements."
     )
     if custom_instructions and custom_instructions.strip():
         instructions.append(
@@ -148,7 +169,5 @@ def build_user_prompt(
             f"{custom_instructions.strip()}\n"
             f"--- END CUSTOM INSTRUCTIONS ---"
         )
-
-    instructions.append("Return ONLY the JSON array, no markdown fences.")
 
     return "\n".join(sections) + "\n" + "\n".join(instructions)

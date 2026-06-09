@@ -8,7 +8,22 @@ import base64, json, os, re, sys, tempfile, traceback
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
+# Pull default models from the library so we stay in sync
+from html2mcq.generator import (
+    _OpenRouterBackend,
+    _OpenAIBackend,
+    _AnthropicBackend,
+    _OllamaBackend,
+)
+
 PORT = int(os.environ.get("PORT", 5000))
+
+DEFAULT_MODELS = {
+    "openrouter": _OpenRouterBackend.DEFAULT_MODEL,
+    "openai": _OpenAIBackend.DEFAULT_MODEL,
+    "anthropic": _AnthropicBackend.DEFAULT_MODEL,
+    "ollama": _OllamaBackend.DEFAULT_MODEL,
+}
 
 HTML = r"""<!DOCTYPE html>
 <html lang="en">
@@ -98,9 +113,9 @@ input:focus,textarea:focus{box-shadow:0 0 0 2px var(--accent)}
   </div>
   <div class="row">
     <label>Model</label>
-    <input type="text" id="model" value="meta-llama/llama-3.3-70b-instruct:free" list="models">
+    <input type="text" id="model" value="__MODEL__" list="models">
     <datalist id="models">
-      <option value="meta-llama/llama-3.3-70b-instruct:free">
+      <option value="__MODEL__">
       <option value="google/gemini-2.5-flash-lite">
       <option value="google/gemma-3-27b-it">
       <option value="google/gemma-3-12b-it">
@@ -212,9 +227,9 @@ QA('.tab-btn').forEach(b => b.onclick = () => {
 });
 
 // provider -> model
+const DM = __DEFAULT_MODELS__;
 QA('input[name="provider"]').forEach(r => r.onchange = () => {
-  const m = {anthropic:'claude-opus-4-6',openai:'gpt-4o',openrouter:'meta-llama/llama-3.3-70b-instruct:free'};
-  $('model').value = m[r.value] || '';
+  $('model').value = DM[r.value] || '';
 });
 
 // PDF file -> auto title
@@ -352,6 +367,9 @@ $('saveBtn').onclick = () => {
 </script>
 </body>
 </html>"""
+
+HTML = HTML.replace("__MODEL__", DEFAULT_MODELS["openrouter"])
+HTML = HTML.replace("__DEFAULT_MODELS__", json.dumps(DEFAULT_MODELS))
 
 
 # ── HTTP server ──────────────────────────────────────────────────────────

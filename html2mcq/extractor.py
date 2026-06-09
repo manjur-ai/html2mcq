@@ -177,7 +177,7 @@ class ContentExtractor:
 
         # Remove ad & boilerplate containers (skip elements that contain main content)
         for tag in soup.find_all(True):
-            if not isinstance(tag, Tag) or tag.name is None or tag.name.lower() in ("html", "body"):
+            if not isinstance(tag, Tag) or tag.name is None or tag.name.lower() in ("html", "body") or tag.attrs is None:
                 continue
             # Don't decompose containers that hold the primary article/main content
             if tag.find(["article", "main"]) or tag.select_one("[role=main]"):

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "html2mcq"
-version = "2.0.0"
+version = "2.0.1"
 description = "Convert any HTML tutorial page, PDF, or image into MCQ questions using AI"
 readme = "README.md"
 license = "MIT"
