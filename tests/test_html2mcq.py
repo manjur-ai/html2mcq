@@ -1545,6 +1545,51 @@ class TestCLI:
         finally:
             MCQGenerator.from_image_paths = orig
 
+    def test_cli_image_folder(self, tmp_path, monkeypatch):
+        import sys
+        from html2mcq import cli
+        img_dir = tmp_path / "images"
+        img_dir.mkdir()
+        (img_dir / "slide1.png").write_text("dummy png 1")
+        (img_dir / "slide2.png").write_text("dummy png 2")
+        (img_dir / "readme.txt").write_text("not an image")
+        monkeypatch.setattr(sys, "argv", ["html2mcq", "--image-folder", str(img_dir),
+                                          "-n", "1", "--api-key", "sk-test"])
+        from html2mcq.generator import MCQGenerator
+        orig = MCQGenerator.from_image_paths
+        try:
+            MCQGenerator.from_image_paths = TestCLI._mock_method
+            cli.main()
+        finally:
+            MCQGenerator.from_image_paths = orig
+
+    def test_cli_pdf_folder(self, tmp_path, monkeypatch):
+        import sys
+        from html2mcq import cli
+        pdf_dir = tmp_path / "pdfs"
+        pdf_dir.mkdir()
+        (pdf_dir / "chapter1.pdf").write_text("dummy pdf 1")
+        (pdf_dir / "chapter2.pdf").write_text("dummy pdf 2")
+        monkeypatch.setattr(sys, "argv", ["html2mcq", "--pdf-folder", str(pdf_dir),
+                                          "-n", "1", "--api-key", "sk-test"])
+        from html2mcq.generator import MCQGenerator
+        orig = MCQGenerator.from_pdf_paths
+        try:
+            MCQGenerator.from_pdf_paths = TestCLI._mock_method
+            cli.main()
+        finally:
+            MCQGenerator.from_pdf_paths = orig
+
+    def test_cli_image_folder_not_found(self, monkeypatch):
+        import sys
+        from html2mcq import cli
+        monkeypatch.setattr(sys, "argv", ["html2mcq", "--image-folder", "/nonexistent",
+                                          "--api-key", "sk-test"])
+        try:
+            cli.main()
+        except SystemExit as e:
+            assert e.code == 1
+
     def test_cli_env_var_api_key(self, monkeypatch):
         import sys
         from html2mcq import cli

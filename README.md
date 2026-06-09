@@ -432,17 +432,26 @@ html2mcq https://docs.python.org/3/tutorial/
 # Local HTML file
 html2mcq --html ./tutorial.html
 
-# PDF URL
+# PDF URL (repeatable)
 html2mcq --pdf-url https://example.com/chapter1.pdf --pdf-url https://example.com/chapter2.pdf
 
-# Local PDF file
+# Local PDF file (repeatable)
 html2mcq --pdf-path ./textbook.pdf
+
+# All PDFs from a folder
+html2mcq --pdf-folder ./textbooks/
 
 # Image URL (via vision model)
 html2mcq --image-url https://example.com/diagram.png --method images2mcq
 
-# Local image files
+# Local image files (repeatable)
 html2mcq --image-path ./slide1.png --image-path ./slide2.png
+
+# All images from a folder (supports .png, .jpg, .jpeg, .gif, .bmp, .tiff, .webp)
+html2mcq --image-folder ./slides/ --method images2mcq
+
+# Combine image folder + PDF folder
+html2mcq --image-folder ./diagrams/ --pdf-folder ./notes/
 
 # Specify question count
 html2mcq https://example.com/tutorial --n 20

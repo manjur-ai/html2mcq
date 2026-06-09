@@ -9,12 +9,39 @@ html2mcq https://example.com/tutorial --provider openai --output quiz.json
 html2mcq --html page.html --difficulty "50% easy, 50% medium"
 html2mcq --pdf-url https://example.com/notes.pdf -o questions.json --format json
 html2mcq --pdf-path ./textbook.pdf --image-path ./diagram.png
+html2mcq --image-folder ./slides/ --method images2mcq
+html2mcq --pdf-folder ./textbooks/
 html2mcq --version
 """
 import argparse
+import glob
 import json
 import os
 import sys
+from pathlib import Path
+
+
+_IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".tif", ".webp"}
+_PDF_EXTENSION = ".pdf"
+
+
+def _glob_files(folder: str, extensions: set) -> list:
+    folder = Path(folder)
+    if not folder.is_dir():
+        print(f"Error: folder not found: {folder}", file=sys.stderr)
+        sys.exit(1)
+    files = []
+    for ext in extensions:
+        files.extend(folder.glob(f"*{ext}"))
+        files.extend(folder.glob(f"*{ext.upper()}"))
+    # Deduplicate and sort
+    seen = set()
+    unique = []
+    for f in sorted(files, key=lambda p: p.name.lower()):
+        if f.suffix.lower() in extensions and f.name not in seen:
+            seen.add(f.name)
+            unique.append(str(f))
+    return unique
 
 
 def _get_api_key(args):
@@ -53,6 +80,10 @@ def main():
                              help="Image URL (repeatable)")
     input_group.add_argument("--image-path", metavar="FILE", action="append", default=[],
                              help="Local image file path (repeatable)")
+    input_group.add_argument("--image-folder", metavar="DIR", default="",
+                             help="Scan folder for images (.png, .jpg, .jpeg, .gif, .bmp, .tiff, .webp)")
+    input_group.add_argument("--pdf-folder", metavar="DIR", default="",
+                             help="Scan folder for PDF files (.pdf)")
 
     # Generation options
     gen_group = parser.add_argument_group("Generation options")
@@ -115,12 +146,18 @@ def main():
         print(f"html2mcq v{__version__}")
         sys.exit(0)
 
+    # Resolve folders to file lists
+    if args.image_folder:
+        args.image_path.extend(_glob_files(args.image_folder, _IMAGE_EXTENSIONS))
+    if args.pdf_folder:
+        args.pdf_path.extend(_glob_files(args.pdf_folder, {_PDF_EXTENSION}))
+
     # Validate input
     has_input = bool(args.url or args.html or args.pdf_url or args.pdf_path
                      or args.image_url or args.image_path)
     if not has_input:
         parser.print_help()
-        print("\nError: at least one input source is required (URL, --html, --pdf-url, --pdf-path, --image-url, --image-path)", file=sys.stderr)
+        print("\nError: at least one input source is required (URL, --html, --pdf-url, --pdf-path, --image-url, --image-path, --image-folder, --pdf-folder)", file=sys.stderr)
         sys.exit(1)
 
     # Lazy import
