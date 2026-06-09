@@ -5,7 +5,6 @@
 [![PyPI version](https://badge.fury.io/py/html2mcq.svg)](https://pypi.org/project/html2mcq/)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-68%20passing-brightgreen.svg)]()
 
 ---
 
@@ -51,19 +50,182 @@ print(mcq.to_pretty_str())
 
 ---
 
-## What it supports
+## Input Methods
 
-| Input | Method |
-|---|---|
-| HTML tutorial page URL | `from_url(url)` |
-| Raw HTML string | `from_html(html)` |
-| PDF via URL | `from_pdf_urls(url)` |
-| Local PDF file | `from_pdf_paths(path)` |
-| Image files (local) | `from_image_paths(path)` |
-| Image URLs | `from_image_urls(url)` |
-| Pre-built blocks | `from_blocks(blocks)` |
+| Input | Method | Batch support |
+|---|---|---|
+| HTML tutorial page URL | `from_url(url)` | ❌ single URL |
+| Raw HTML string | `from_html(html)` | ❌ single string |
+| PDF via URL | `from_pdf_urls(url)` | ✅ `list[str]` |
+| Local PDF file | `from_pdf_paths(path)` | ✅ `list[str]` |
+| Image files (local) | `from_image_paths(path)` | ✅ `list[str]` |
+| Image URLs | `from_image_urls(url)` | ✅ `list[str]` |
+| Pre-built content blocks | `from_blocks(blocks)` | ❌ single list |
 
-Also accepts `list[str]` for batch — `from_pdf_urls([url1, url2])`, `from_image_paths([img1, img2])`.
+---
+
+## Examples (10+)
+
+### 1. Basic — HTML tutorial page
+
+```python
+from html2mcq import MCQGenerator
+
+gen = MCQGenerator(api_key="sk-or-v1-...")
+mcq = gen.from_url("https://docs.python.org/3/tutorial/introduction.html", n=5)
+print(mcq.to_pretty_str())
+```
+
+### 2. Raw HTML string
+
+```python
+html_string = """
+<html><body>
+<h1>Python Lists</h1>
+<p>Lists are ordered, mutable collections. Items are indexed from 0.</p>
+<pre><code>fruits = ["apple", "banana", "cherry"]
+fruits.append("date")
+</code></pre>
+</body></html>
+"""
+mcq = gen.from_html(html_string, n=3)
+print(mcq.to_json())
+```
+
+### 3. Multiple PDF URLs in batch
+
+```python
+mcq = gen.from_pdf_urls([
+    "https://example.com/chapter1.pdf",
+    "https://example.com/chapter2.pdf",
+    "https://example.com/chapter3.pdf",
+], n=20)
+```
+
+### 4. Local PDF files
+
+```python
+mcq = gen.from_pdf_paths([
+    "C:/Users/Me/Documents/lecture_notes.pdf",
+    "C:/Users/Me/Documents/textbook_ch5.pdf",
+], n=15)
+```
+
+### 5. Image files with OCR (two-step)
+
+```python
+gen = MCQGenerator(
+    api_key="sk-or-v1-...",
+    method="twostep",
+    ocr_model="google/gemini-2.5-flash-lite",
+    save_ocr_path="ocr_output.txt",
+)
+mcq = gen.from_image_paths("screenshot.png", n=5)
+```
+
+### 6. Image URLs via vision model (direct)
+
+```python
+gen = MCQGenerator(
+    api_key="sk-or-v1-...",
+    method="images2mcq",
+)
+mcq = gen.from_image_urls("https://example.com/diagram.png", n=5)
+```
+
+### 7. Batch image files
+
+```python
+mcq = gen.from_image_paths([
+    "slide01.png",
+    "slide02.png",
+    "slide03.png",
+], n=15)
+```
+
+### 8. Generate as many questions as possible
+
+```python
+# When n=999, the AI covers every distinct topic in the content
+mcq = gen.from_url("https://docs.python.org/3/tutorial/", n=999)
+print(f"Generated {len(mcq.questions)} questions")
+```
+
+### 9. Difficulty mix and topic focus
+
+```python
+mcq = gen.from_url(
+    "https://docs.python.org/3/tutorial/",
+    n=20,
+    difficulty_mix="50% easy, 30% medium, 20% hard",
+    focus_topics=["lists", "dictionaries", "loops"],
+)
+```
+
+### 10. Custom instructions per call
+
+```python
+mcq = gen.from_url(
+    "https://docs.python.org/3/tutorial/",
+    n=10,
+    custom_instructions="All questions must be code-based. Include the code snippet in the question.",
+)
+```
+
+### 11. Pre-extracted content blocks
+
+```python
+from html2mcq import MCQGenerator, ContentExtractor
+
+extractor = ContentExtractor()
+title, blocks = extractor.from_url("https://docs.python.org/3/tutorial/")
+
+# Filter to only code blocks
+code_blocks = [b for b in blocks if b.type == "code"]
+mcq = gen.from_blocks(code_blocks, n=5)
+```
+
+### 12. Save output to JSON file
+
+```python
+import json
+
+mcq = gen.from_url("https://docs.python.org/3/tutorial/", n=10)
+with open("quiz.json", "w") as f:
+    json.dump(mcq.to_json(), f, indent=2)
+```
+
+### 13. Filter questions by difficulty
+
+```python
+mcq = gen.from_url("https://docs.python.org/3/tutorial/", n=20)
+easy = mcq.filter_by_difficulty("easy")
+medium = mcq.filter_by_difficulty("medium")
+hard = mcq.filter_by_difficulty("hard")
+print(f"Easy: {len(easy)}, Medium: {len(medium)}, Hard: {len(hard)}")
+```
+
+### 14. Different AI provider — Anthropic
+
+```python
+gen = MCQGenerator(
+    api_key="sk-ant-...",
+    provider="anthropic",
+    mcq_model="claude-3-5-sonnet-20241022",
+)
+mcq = gen.from_url("https://docs.python.org/3/tutorial/", n=10)
+```
+
+### 15. Local Ollama (no API key needed)
+
+```python
+gen = MCQGenerator(
+    provider="ollama",
+    mcq_model="qwen2.5:7b",
+    ollama_base_url="http://localhost:11434/v1",
+)
+mcq = gen.from_url("https://docs.python.org/3/tutorial/", n=5)
+```
 
 ---
 
@@ -219,35 +381,6 @@ mcq = gen.from_url("https://example.com/", n=10,
 
 ---
 
-## PDF Backends
-
-```python
-# Default — PyMuPDF, fast, works for most digital PDFs
-gen = MCQGenerator(provider="openrouter")
-```
-
----
-
-## CLI
-
-```bash
-# Basic
-html2mcq https://example.com/tutorial --n 20
-
-# All options
-html2mcq https://example.com/tutorial \
-    --n 20 \
-    --provider openrouter \
-    --mcq-model google/gemini-2.5-flash-lite \
-    --ocr-model auto \
-    --difficulty "40% easy, 40% medium, 20% hard" \
-    --topics variables functions \
-    --output quiz.json \
-    --format json
-```
-
----
-
 ## API Reference
 
 ### `MCQGenerator`
@@ -290,6 +423,29 @@ All methods accept `api_key_override`, `prompt_log_path`, `difficulty_mix`, `foc
 
 ---
 
+## CLI
+
+```bash
+# Basic
+html2mcq https://example.com/tutorial --n 20
+
+# All options
+html2mcq https://example.com/tutorial \
+    --n 20 \
+    --provider openrouter \
+    --mcq-model google/gemini-2.5-flash-lite \
+    --ocr-model auto \
+    --difficulty "40% easy, 40% medium, 20% hard" \
+    --topics variables functions \
+    --output quiz.json \
+    --format json
+
+# Generate as many as possible
+html2mcq https://example.com/tutorial --n 999 --output all_topics.json
+```
+
+---
+
 ## Project Structure
 
 ```
@@ -304,8 +460,8 @@ html2mcq/
 │   ├── prompts.py          # System + user prompt builders
 │   └── cli.py              # CLI entry point
 ├── tests/
-│   ├── test_html2mcq.py       # 119 unit tests (fully mocked)
-│   └── scripts/               # Debug / scratch scripts
+│   ├── test_html2mcq.py    # Unit tests (fully mocked)
+│   └── scripts/            # Debug / scratch scripts
 ├── pyproject.toml
 ├── README.md
 └── CHANGELOG.md
