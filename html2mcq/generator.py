@@ -391,7 +391,7 @@ class MCQGenerator:
     def from_html(
         self,
         html: str,
-        n: int = 10,
+        n: int = 999,
         base_url: str = "",
         difficulty_mix: Optional[str] = None,
         focus_topics: Optional[List[str]] = None,
@@ -451,7 +451,7 @@ class MCQGenerator:
     def from_blocks(
         self,
         blocks: List[ContentBlock],
-        n: int = 10,
+        n: int = 999,
         page_title: str = "Custom Content",
         source_url: Optional[str] = None,
         difficulty_mix: Optional[str] = None,
@@ -479,7 +479,7 @@ class MCQGenerator:
     def from_url(
         self,
         url: str,
-        n: int = 10,
+        n: int = 999,
         difficulty_mix: Optional[str] = None,
         focus_topics: Optional[List[str]] = None,
         enrich_pdfs: bool = True,
@@ -536,7 +536,7 @@ class MCQGenerator:
     def from_image_urls(
         self,
         urls: Union[str, List[str]],
-        n: int = 10,
+        n: int = 999,
         title: str = "Images",
         difficulty_mix: Optional[str] = None,
         focus_topics: Optional[List[str]] = None,
@@ -583,7 +583,7 @@ class MCQGenerator:
     def from_image_paths(
         self,
         paths: Union[str, List[str]],
-        n: int = 10,
+        n: int = 999,
         title: str = "Images",
         difficulty_mix: Optional[str] = None,
         focus_topics: Optional[List[str]] = None,
@@ -635,7 +635,7 @@ class MCQGenerator:
     def from_pdf_urls(
         self,
         urls: Union[str, List[str]],
-        n: int = 10,
+        n: int = 999,
         pdf_title: str = "",
         difficulty_mix: Optional[str] = None,
         focus_topics: Optional[List[str]] = None,
@@ -686,7 +686,7 @@ class MCQGenerator:
     def from_pdf_paths(
         self,
         paths: Union[str, List[str]],
-        n: int = 10,
+        n: int = 999,
         pdf_title: str = "",
         difficulty_mix: Optional[str] = None,
         focus_topics: Optional[List[str]] = None,
