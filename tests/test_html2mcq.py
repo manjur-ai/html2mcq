@@ -1402,7 +1402,24 @@ class TestFromHtmlMethod:
 
 # ── CLI tests ───────────────────────────────────────────────────────────────
 
+_CLI_MOCK_Q = MCQQuestion(
+    question_html="Test?",
+    options=["A", "B", "C", "D"],
+    answers=[0],
+    multi=False,
+    marks=1,
+    negative_marks=0.25,
+    difficulty="easy",
+    explaination="",
+)
+_CLI_MOCK_SET = MCQSet(None, "Test", [_CLI_MOCK_Q], 1, "", total_exam_time=2)
+
+
 class TestCLI:
+    @staticmethod
+    def _mock_method(*a, **kw):
+        return _CLI_MOCK_SET
+
     def test_cli_html_input(self, tmp_path, monkeypatch):
         import sys
         from html2mcq import cli
@@ -1412,9 +1429,7 @@ class TestCLI:
         from html2mcq.generator import MCQGenerator
         orig = MCQGenerator.from_html
         try:
-            def mock_from_html(self, html, **kw):
-                return MCQSet(None, "Test", [], 1, "", total_exam_time=2)
-            MCQGenerator.from_html = mock_from_html
+            MCQGenerator.from_html = TestCLI._mock_method
             cli.main()
         finally:
             MCQGenerator.from_html = orig
@@ -1426,9 +1441,7 @@ class TestCLI:
         from html2mcq.generator import MCQGenerator
         orig = MCQGenerator.from_url
         try:
-            def mock_from_url(self, url, **kw):
-                return MCQSet(None, "Test", [], 1, "", total_exam_time=2)
-            MCQGenerator.from_url = mock_from_url
+            MCQGenerator.from_url = TestCLI._mock_method
             cli.main()
         finally:
             MCQGenerator.from_url = orig
@@ -1442,10 +1455,105 @@ class TestCLI:
         from html2mcq.generator import MCQGenerator
         orig = MCQGenerator.from_url
         try:
-            def mock_from_url(self, url, **kw):
-                return MCQSet(None, "Test", [], 1, "", total_exam_time=2)
-            MCQGenerator.from_url = mock_from_url
+            MCQGenerator.from_url = TestCLI._mock_method
             cli.main()
             assert (tmp_path / "out.json").exists()
+        finally:
+            MCQGenerator.from_url = orig
+
+    def test_cli_version(self, monkeypatch):
+        import sys
+        from html2mcq import cli
+        monkeypatch.setattr(sys, "argv", ["html2mcq", "--version"])
+        try:
+            cli.main()
+        except SystemExit as e:
+            assert e.code == 0
+
+    def test_cli_no_input_shows_error(self, monkeypatch):
+        import sys
+        from html2mcq import cli
+        monkeypatch.setattr(sys, "argv", ["html2mcq", "--api-key", "sk-test"])
+        try:
+            cli.main()
+        except SystemExit as e:
+            assert e.code == 1
+
+    def test_cli_default_n_is_999(self, monkeypatch):
+        import sys
+        from html2mcq import cli
+        monkeypatch.setattr(sys, "argv", ["html2mcq", "https://example.com", "--api-key", "sk-test"])
+        import argparse
+        parser = argparse.ArgumentParser()
+        parser.add_argument("-n", "--n", type=int, default=999)
+        args, _ = parser.parse_known_args([])
+        assert args.n == 999
+
+    def test_cli_pdf_url(self, monkeypatch):
+        import sys
+        from html2mcq import cli
+        monkeypatch.setattr(sys, "argv", ["html2mcq", "--pdf-url", "https://example.com/doc.pdf",
+                                          "-n", "1", "--api-key", "sk-test"])
+        from html2mcq.generator import MCQGenerator
+        orig = MCQGenerator.from_pdf_urls
+        try:
+            MCQGenerator.from_pdf_urls = TestCLI._mock_method
+            cli.main()
+        finally:
+            MCQGenerator.from_pdf_urls = orig
+
+    def test_cli_pdf_path(self, tmp_path, monkeypatch):
+        import sys
+        from html2mcq import cli
+        pdf_file = tmp_path / "test.pdf"
+        pdf_file.write_text("dummy pdf")
+        monkeypatch.setattr(sys, "argv", ["html2mcq", "--pdf-path", str(pdf_file),
+                                          "-n", "1", "--api-key", "sk-test"])
+        from html2mcq.generator import MCQGenerator
+        orig = MCQGenerator.from_pdf_paths
+        try:
+            MCQGenerator.from_pdf_paths = TestCLI._mock_method
+            cli.main()
+        finally:
+            MCQGenerator.from_pdf_paths = orig
+
+    def test_cli_image_url(self, monkeypatch):
+        import sys
+        from html2mcq import cli
+        monkeypatch.setattr(sys, "argv", ["html2mcq", "--image-url", "https://example.com/img.png",
+                                          "-n", "1", "--api-key", "sk-test"])
+        from html2mcq.generator import MCQGenerator
+        orig = MCQGenerator.from_image_urls
+        try:
+            MCQGenerator.from_image_urls = TestCLI._mock_method
+            cli.main()
+        finally:
+            MCQGenerator.from_image_urls = orig
+
+    def test_cli_image_path(self, tmp_path, monkeypatch):
+        import sys
+        from html2mcq import cli
+        img_file = tmp_path / "test.png"
+        img_file.write_text("dummy png")
+        monkeypatch.setattr(sys, "argv", ["html2mcq", "--image-path", str(img_file),
+                                          "-n", "1", "--api-key", "sk-test"])
+        from html2mcq.generator import MCQGenerator
+        orig = MCQGenerator.from_image_paths
+        try:
+            MCQGenerator.from_image_paths = TestCLI._mock_method
+            cli.main()
+        finally:
+            MCQGenerator.from_image_paths = orig
+
+    def test_cli_env_var_api_key(self, monkeypatch):
+        import sys
+        from html2mcq import cli
+        monkeypatch.setattr(sys, "argv", ["html2mcq", "https://example.com", "-n", "1"])
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-env-test")
+        from html2mcq.generator import MCQGenerator
+        orig = MCQGenerator.from_url
+        try:
+            MCQGenerator.from_url = TestCLI._mock_method
+            cli.main()
         finally:
             MCQGenerator.from_url = orig

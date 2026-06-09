@@ -426,23 +426,50 @@ All methods accept `api_key_override`, `prompt_log_path`, `difficulty_mix`, `foc
 ## CLI
 
 ```bash
-# Basic
+# Basic — URL (n defaults to 999 = cover all topics)
+html2mcq https://docs.python.org/3/tutorial/
+
+# Local HTML file
+html2mcq --html ./tutorial.html
+
+# PDF URL
+html2mcq --pdf-url https://example.com/chapter1.pdf --pdf-url https://example.com/chapter2.pdf
+
+# Local PDF file
+html2mcq --pdf-path ./textbook.pdf
+
+# Image URL (via vision model)
+html2mcq --image-url https://example.com/diagram.png --method images2mcq
+
+# Local image files
+html2mcq --image-path ./slide1.png --image-path ./slide2.png
+
+# Specify question count
 html2mcq https://example.com/tutorial --n 20
 
-# All options
-html2mcq https://example.com/tutorial \
-    --n 20 \
-    --provider openrouter \
-    --mcq-model google/gemini-2.5-flash-lite \
-    --ocr-model auto \
-    --difficulty "40% easy, 40% medium, 20% hard" \
-    --topics variables functions \
-    --output quiz.json \
-    --format json
+# Output to JSON file
+html2mcq https://example.com/tutorial --output quiz.json --format json
 
-# Generate as many as possible
-html2mcq https://example.com/tutorial --n 999 --output all_topics.json
+# Difficulty mix and topic focus
+html2mcq https://example.com/tutorial --difficulty "40% easy, 40% medium, 20% hard" --topics variables functions
+
+# Custom instructions
+html2mcq https://example.com/tutorial -i "Make answers very close and confusing"
+
+# AI provider and model
+html2mcq https://example.com/tutorial --provider openai --mcq-model gpt-4o --api-key sk-...
+
+# Auto-detect API key from env var (OPENROUTER_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY)
+html2mcq https://example.com/tutorial
+
+# Local Ollama (no API key needed)
+html2mcq https://example.com/tutorial --provider ollama --mcq-model qwen2.5:7b
+
+# Show version
+html2mcq --version
 ```
+
+All output is printed to stdout by default. Use `--output` / `-o` to save to a file.
 
 ---
 
