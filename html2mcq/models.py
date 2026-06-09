@@ -29,7 +29,7 @@ class MCQQuestion:
     marks: float                # Marks awarded for correct answer
     negative_marks: float       # Marks deducted for wrong answer
     difficulty: str             # "easy" | "medium" | "hard"
-    explaination: str           # Explanation (typo preserved per spec)
+    explanation: str           # Explanation (typo preserved per spec)
 
     def to_dict(self) -> dict:
         return {
@@ -40,7 +40,7 @@ class MCQQuestion:
             "marks": self.marks,
             "negative_marks": self.negative_marks,
             "difficulty": self.difficulty,
-            "explaination": self.explaination,
+            "explanation": self.explanation,
         }
 
     def to_pretty_str(self, number: int = 1) -> str:
@@ -53,8 +53,8 @@ class MCQQuestion:
         for i, opt in enumerate(self.options):
             marker = "✓" if i in self.answers else " "
             lines.append(f"  {marker} {chr(65+i)}) {opt}")
-        if self.explaination:
-            lines += ["", f"  Explanation: {self.explaination}"]
+        if self.explanation:
+            lines += ["", f"  Explanation: {self.explanation}"]
         return "\n".join(lines)
 
 

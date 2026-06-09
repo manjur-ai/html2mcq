@@ -24,7 +24,7 @@ class TestModels:
             marks=1.0,
             negative_marks=0.0 if multi else 0.25,
             difficulty=difficulty,
-            explaination="Python is a programming language.",
+            explanation="Python is a programming language.",
         )
 
     def test_question_to_dict_schema(self):
@@ -35,7 +35,7 @@ class TestModels:
         assert "multi" in d
         assert "marks" in d
         assert "negative_marks" in d
-        assert "explaination" in d
+        assert "explanation" in d
         assert isinstance(d["answers"], list)
 
     def test_single_answer_question(self):
@@ -186,7 +186,7 @@ class TestPrompts:
         assert "answers" in sp
         assert "multi" in sp
         assert "negative_marks" in sp
-        assert "explaination" in sp
+        assert "explanation" in sp
 
     def test_user_prompt_contains_all_types(self):
         up = build_user_prompt(self._sample_blocks(), n=5, page_title="Test")
@@ -208,7 +208,7 @@ MOCK_RESPONSE = json.dumps([
         "marks": 1,
         "negative_marks": 0.25,
         "difficulty": "easy",
-        "explaination": "Python is known for its simple, readable syntax.",
+        "explanation": "Python is known for its simple, readable syntax.",
     },
     {
         "question_html": "Which are Python built-in data types?",
@@ -218,7 +218,7 @@ MOCK_RESPONSE = json.dumps([
         "marks": 1,
         "negative_marks": 0,
         "difficulty": "medium",
-        "explaination": "int, float, str are built-in. char is from C.",
+        "explanation": "int, float, str are built-in. char is from C.",
     },
 ])
 
@@ -263,7 +263,7 @@ class TestMCQGenerator:
         assert "multi" in q
         assert "marks" in q
         assert "negative_marks" in q
-        assert "explaination" in q
+        assert "explanation" in q
 
     def test_single_answer_question(self):
         gen = self._make_gen()
@@ -590,7 +590,7 @@ MOCK_PDF_RESPONSE = json.dumps([
         "marks": 1,
         "negative_marks": 0.25,
         "difficulty": "easy",
-        "explaination": "The PDF states Python is versatile, used in AI and web development.",
+        "explanation": "The PDF states Python is versatile, used in AI and web development.",
     },
     {
         "question_html": "Which features does Python support according to the PDF?",
@@ -600,7 +600,7 @@ MOCK_PDF_RESPONSE = json.dumps([
         "marks": 1,
         "negative_marks": 0,
         "difficulty": "medium",
-        "explaination": "Python supports OOP, functional, and procedural paradigms but not assembly-level.",
+        "explanation": "Python supports OOP, functional, and procedural paradigms but not assembly-level.",
     },
 ])
 
@@ -1110,28 +1110,28 @@ class TestParseResponse:
     def test_markdown_fences_json(self):
         from html2mcq.generator import MCQGenerator
         gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
-        raw = '```json\n[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""}]\n```'
+        raw = '```json\n[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":""}]\n```'
         result = gen._parse_response(raw)
         assert len(result) == 1
 
     def test_markdown_fences_no_lang(self):
         from html2mcq.generator import MCQGenerator
         gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
-        raw = '```\n[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""}]\n```'
+        raw = '```\n[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":""}]\n```'
         result = gen._parse_response(raw)
         assert len(result) == 1
 
     def test_single_int_answer(self):
         from html2mcq.generator import MCQGenerator
         gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
-        raw = '[{"question_html":"Q","options":["A","B","C","D"],"answers":2,"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""}]'
+        raw = '[{"question_html":"Q","options":["A","B","C","D"],"answers":2,"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":""}]'
         result = gen._parse_response(raw)
         assert result[0].answers == [2]
 
     def test_invalid_json_with_array(self):
         from html2mcq.generator import MCQGenerator
         gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
-        raw = 'Some text [{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""}] trailing'
+        raw = 'Some text [{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":""}] trailing'
         result = gen._parse_response(raw)
         assert len(result) == 1
 
@@ -1144,28 +1144,28 @@ class TestParseResponse:
     def test_malformed_item_skipped(self):
         from html2mcq.generator import MCQGenerator
         gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
-        raw = '[{"question_html":"Q1","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""},{"question_html":"Q2","options":"not a list","answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""}]'
+        raw = '[{"question_html":"Q1","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":""},{"question_html":"Q2","options":"not a list","answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":""}]'
         result = gen._parse_response(raw)
         assert len(result) == 1
 
     def test_answers_as_list_of_ints(self):
         from html2mcq.generator import MCQGenerator
         gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
-        raw = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0,2],"multi":true,"marks":1,"negative_marks":0,"difficulty":"medium","explaination":""}]'
+        raw = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0,2],"multi":true,"marks":1,"negative_marks":0,"difficulty":"medium","explanation":""}]'
         result = gen._parse_response(raw)
         assert result[0].answers == [0, 2]
 
-    def test_explaination_fallback(self):
+    def test_explanation_fallback(self):
         from html2mcq.generator import MCQGenerator
         gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
         raw = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":"uses explanation key"}]'
         result = gen._parse_response(raw)
-        assert result[0].explaination == "uses explanation key"
+        assert result[0].explanation == "uses explanation key"
 
     def test_null_item_skipped(self):
         from html2mcq.generator import MCQGenerator
         gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
-        raw = '[{"question_html":"Q1","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""},null,{"question_html":"Q2","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""}]'
+        raw = '[{"question_html":"Q1","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":""},null,{"question_html":"Q2","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":""}]'
         result = gen._parse_response(raw)
         assert len(result) == 2
 
@@ -1281,7 +1281,7 @@ class TestImageTwostep:
         gen.image_ocr_extractor.ocr_image_bytes = lambda blobs: "OCR extracted text"
         gen.save_ocr_path = str(tmp_path / "ocr_out.txt")
         mock_backend = MagicMock()
-        mock_backend.complete.return_value = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""}]'
+        mock_backend.complete.return_value = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":""}]'
         mock_backend.mcq_model = "test"
         gen.backend = mock_backend
         mcq = gen._image_twostep(paths=["test.png"], urls=None,
@@ -1348,7 +1348,7 @@ class TestPdfEdgeCases:
         gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
         gen.pdf_extractor.from_url = lambda url, **kw: [ContentBlock(type="pdf_text", content="test")]
         mock_backend = MagicMock()
-        mock_backend.complete.return_value = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""}]'
+        mock_backend.complete.return_value = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":""}]'
         mock_backend.mcq_model = "test"
         gen.backend = mock_backend
         result = gen.from_pdf_urls("https://example.com/test.pdf", n=1)
@@ -1362,7 +1362,7 @@ class TestFromBlocks:
         from html2mcq.generator import MCQGenerator
         gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
         mock_backend = MagicMock()
-        mock_backend.complete.return_value = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""}]'
+        mock_backend.complete.return_value = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":""}]'
         mock_backend.mcq_model = "test"
         gen.backend = mock_backend
         blocks = [ContentBlock(type="text", content="test content")]
@@ -1373,7 +1373,7 @@ class TestFromBlocks:
         from html2mcq.generator import MCQGenerator
         gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
         mock_backend = MagicMock()
-        mock_backend.complete.return_value = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""}]'
+        mock_backend.complete.return_value = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":""}]'
         mock_backend.mcq_model = "test"
         gen.backend = mock_backend
         logfile = tmp_path / "prompt.log"
@@ -1391,7 +1391,7 @@ class TestFromHtmlMethod:
         from html2mcq.extractor import ContentExtractor
         gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="images2mcq")
         mock_backend = MagicMock()
-        mock_backend.complete.return_value = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""}]'
+        mock_backend.complete.return_value = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":""}]'
         mock_backend.mcq_model = "test"
         gen.backend = mock_backend
         gen._vision_mcq = lambda *args, **kw: []
@@ -1410,7 +1410,7 @@ _CLI_MOCK_Q = MCQQuestion(
     marks=1,
     negative_marks=0.25,
     difficulty="easy",
-    explaination="",
+    explanation="",
 )
 _CLI_MOCK_SET = MCQSet(None, "Test", [_CLI_MOCK_Q], 1, "", total_exam_time=2)
 

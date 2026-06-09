@@ -344,7 +344,7 @@ mcq = gen.from_url(
       "marks": 1,
       "negative_marks": 0,
       "difficulty": "medium",
-      "explaination": "map() and filter() return new arrays without modifying the original."
+      "explanation": "map() and filter() return new arrays without modifying the original."
     }
   ]
 }

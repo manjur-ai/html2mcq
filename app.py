@@ -334,7 +334,7 @@ function pretty(mcq) {
       const k = q.answers.indexOf(j)!==-1;
       h += '<span class="'+(k?'c':'o')+'">'+(k?'\u2713 ':'   ')+String.fromCharCode(65+j)+') '+esc(o)+'\n</span>';
     });
-    if (q.explaination) h+='<span class="m">  \uD83D\uDCA1 '+esc(q.explaination)+'\n</span>';
+    if (q.explanation) h+='<span class="m">  \uD83D\uDCA1 '+esc(q.explanation)+'\n</span>';
     h+='\n';
   });
   return h;
