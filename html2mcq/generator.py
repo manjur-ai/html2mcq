@@ -950,6 +950,48 @@ class MCQGenerator:
                 })
         return result
 
+    @staticmethod
+    def get_mcq_models() -> list:
+        """Return MCQ model list from HTML2MCQ_MCQ_MODELS env var, or built-in default."""
+        return [entry["model"] for entry in MCQGenerator._resolve_mcq_model_list()]
+
+    @staticmethod
+    def set_mcq_models(value: str) -> None:
+        """Set HTML2MCQ_MCQ_MODELS env var (comma-separated)."""
+        os.environ["HTML2MCQ_MCQ_MODELS"] = value
+
+    @staticmethod
+    def get_ocr_models() -> list:
+        """Return OCR model list from HTML2MCQ_OCR_MODELS env var, or built-in default."""
+        from html2mcq.image_ocr import _OCR_MODELS_ENV_VAR, _DEFAULT_OCR_PRIORITY
+        env = os.environ.get(_OCR_MODELS_ENV_VAR, "").strip()
+        if env:
+            return [m.strip() for m in env.split(",") if m.strip()]
+        return list(_DEFAULT_OCR_PRIORITY)
+
+    @staticmethod
+    def set_ocr_models(value: str) -> None:
+        """Set HTML2MCQ_OCR_MODELS env var (comma-separated)."""
+        os.environ["HTML2MCQ_OCR_MODELS"] = value
+
+    @staticmethod
+    def set_api_key(provider: str, key: str) -> None:
+        """Set the API key env var for a provider only if not already set.
+
+        Providers: openrouter, anthropic, openai, ollama
+        """
+        env_map = {
+            "openrouter": "OPENROUTER_API_KEY",
+            "anthropic": "ANTHROPIC_API_KEY",
+            "openai": "OPENAI_API_KEY",
+            "ollama": "",
+        }
+        env_var = env_map.get(provider.lower())
+        if not env_var:
+            return
+        if not os.environ.get(env_var, "").strip():
+            os.environ[env_var] = key
+
     def _generate(
         self,
         blocks: List[ContentBlock],

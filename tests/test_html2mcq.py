@@ -1602,3 +1602,52 @@ class TestCLI:
             cli.main()
         finally:
             MCQGenerator.from_url = orig
+
+
+class TestEnvHelpers:
+    def test_get_mcq_models_default(self):
+        from html2mcq.generator import MCQGenerator
+        models = MCQGenerator.get_mcq_models()
+        assert isinstance(models, list)
+        assert len(models) > 0
+        assert all(isinstance(m, str) for m in models)
+
+    def test_set_and_get_mcq_models(self):
+        from html2mcq.generator import MCQGenerator
+        MCQGenerator.set_mcq_models("model-a,model-b,model-c")
+        models = MCQGenerator.get_mcq_models()
+        assert models == ["model-a", "model-b", "model-c"]
+
+    def test_get_ocr_models_default(self):
+        from html2mcq.generator import MCQGenerator
+        models = MCQGenerator.get_ocr_models()
+        assert isinstance(models, list)
+        assert len(models) > 0
+
+    def test_set_and_get_ocr_models(self):
+        from html2mcq.generator import MCQGenerator
+        MCQGenerator.set_ocr_models("ocr-a,ocr-b,ocr-c")
+        models = MCQGenerator.get_ocr_models()
+        assert models == ["ocr-a", "ocr-b", "ocr-c"]
+
+    def test_set_api_key_sets_when_empty(self):
+        from html2mcq.generator import MCQGenerator
+        import os
+        os.environ.pop("OPENROUTER_API_KEY", None)
+        MCQGenerator.set_api_key("openrouter", "sk-test-key")
+        assert os.environ.get("OPENROUTER_API_KEY") == "sk-test-key"
+        del os.environ["OPENROUTER_API_KEY"]
+
+    def test_set_api_key_ignores_when_already_set(self, monkeypatch):
+        from html2mcq.generator import MCQGenerator
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-existing")
+        MCQGenerator.set_api_key("openrouter", "sk-new-key")
+        import os
+        assert os.environ["OPENROUTER_API_KEY"] == "sk-existing"
+
+    def test_set_api_key_ollama_noop(self):
+        from html2mcq.generator import MCQGenerator
+        import os
+        os.environ.pop("OPENROUTER_API_KEY", None)
+        MCQGenerator.set_api_key("ollama", "should-not-set")
+        assert os.environ.get("OPENROUTER_API_KEY") is None
