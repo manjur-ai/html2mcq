@@ -8,7 +8,7 @@ from .pdf import PDFExtractor
 from .image_ocr import ImageOCRExtractor
 from .models import MCQQuestion, MCQSet, ContentBlock
 
-__version__ = "2.5.0"
+__version__ = "2.5.1"
 __author__ = "html2mcq"
 __all__ = [
     "MCQGenerator",

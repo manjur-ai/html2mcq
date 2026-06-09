@@ -497,6 +497,7 @@ class MCQGenerator:
         self,
         url: str,
         n: int = 999,
+        page_title: str = "",
         difficulty_mix: Optional[str] = None,
         focus_topics: Optional[List[str]] = None,
         enrich_pdfs: bool = True,
@@ -510,6 +511,8 @@ class MCQGenerator:
         with self._with_overrides(api_key_override, prompt_log_path,
                                   ocr_model=ocr_model, mcq_model=mcq_model):
             title, blocks = self.extractor.from_url(url)
+            if page_title:
+                title = page_title
 
             if enrich_pdfs:
                 blocks = self.pdf_extractor.enrich_blocks(blocks)

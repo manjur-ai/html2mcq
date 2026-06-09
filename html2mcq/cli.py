@@ -206,30 +206,36 @@ def main():
             with open(args.html, encoding="utf-8") as f:
                 html = f.read()
             mcq_set = gen.from_html(html, n=n, difficulty_mix=difficulty,
-                                    focus_topics=topics, custom_instructions=instructions)
+                                    focus_topics=topics, custom_instructions=instructions,
+                                    ocr_model=args.ocr_model, mcq_model=args.mcq_model)
 
         elif args.url:
             print(f"Fetching and analysing: {args.url}", file=sys.stderr)
             mcq_set = gen.from_url(args.url, n=n, difficulty_mix=difficulty,
-                                   focus_topics=topics, custom_instructions=instructions)
+                                   focus_topics=topics, custom_instructions=instructions,
+                                   ocr_model=args.ocr_model, mcq_model=args.mcq_model)
 
         elif args.pdf_url or args.pdf_path:
             if args.pdf_url:
                 print(f"Fetching PDFs: {args.pdf_url}", file=sys.stderr)
                 mcq_set = gen.from_pdf_urls(args.pdf_url, n=n, difficulty_mix=difficulty,
-                                            focus_topics=topics, custom_instructions=instructions)
+                                            focus_topics=topics, custom_instructions=instructions,
+                                            ocr_model=args.ocr_model, mcq_model=args.mcq_model)
             if args.pdf_path:
                 print(f"Reading PDFs: {args.pdf_path}", file=sys.stderr)
                 mcq_set = gen.from_pdf_paths(args.pdf_path, n=n, difficulty_mix=difficulty,
-                                             focus_topics=topics, custom_instructions=instructions)
+                                             focus_topics=topics, custom_instructions=instructions,
+                                             ocr_model=args.ocr_model, mcq_model=args.mcq_model)
 
         elif args.image_url or args.image_path:
             if args.image_url:
                 mcq_set = gen.from_image_urls(args.image_url, n=n, difficulty_mix=difficulty,
-                                              focus_topics=topics, custom_instructions=instructions)
+                                              focus_topics=topics, custom_instructions=instructions,
+                                              ocr_model=args.ocr_model, mcq_model=args.mcq_model)
             if args.image_path:
                 mcq_set = gen.from_image_paths(args.image_path, n=n, difficulty_mix=difficulty,
-                                               focus_topics=topics, custom_instructions=instructions)
+                                               focus_topics=topics, custom_instructions=instructions,
+                                               ocr_model=args.ocr_model, mcq_model=args.mcq_model)
 
     except Exception as e:
         print(f"Generation failed: {e}", file=sys.stderr)
