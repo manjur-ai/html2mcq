@@ -16,7 +16,7 @@ import base64 as _base64
 from .extractor import ContentExtractor
 from .models import ContentBlock, MCQQuestion, MCQSet
 from .prompts import build_system_prompt, build_user_prompt
-from .pdf import PDFExtractor, _render_pdf_pages_to_pngs, _fetch_bytes
+from .pdf import PDFExtractor, _render_pdf_pages_to_pngs, _render_specific_pages, _parse_page_range, _fetch_bytes
 from .image_ocr import ImageOCRExtractor, _download_image
 
 
@@ -437,6 +437,7 @@ class MCQGenerator:
         prompt_log_path: Optional[str] = None,
         ocr_model: Optional[str] = None,
         mcq_model: Optional[str] = None,
+        show_progress: bool = False,
     ) -> MCQSet:
         with self._with_overrides(api_key_override, prompt_log_path,
                                   ocr_model=ocr_model, mcq_model=mcq_model):
@@ -455,6 +456,7 @@ class MCQGenerator:
                 difficulty_mix=difficulty_mix,
                 focus_topics=focus_topics,
                 custom_instructions=custom_instructions,
+                show_progress=show_progress,
             )
 
             if enrich_images and self.method == "images2mcq":
@@ -479,6 +481,7 @@ class MCQGenerator:
         prompt_log_path: Optional[str] = None,
         ocr_model: Optional[str] = None,
         mcq_model: Optional[str] = None,
+        show_progress: bool = False,
     ) -> MCQSet:
         with self._with_overrides(api_key_override, prompt_log_path,
                                   ocr_model=ocr_model, mcq_model=mcq_model):
@@ -490,6 +493,7 @@ class MCQGenerator:
                 difficulty_mix=difficulty_mix,
                 focus_topics=focus_topics,
                 custom_instructions=custom_instructions,
+                show_progress=show_progress,
             )
             return self._build_mcq_set(all_qs, n, page_title, source_url, blocks)
 
@@ -507,6 +511,7 @@ class MCQGenerator:
         prompt_log_path: Optional[str] = None,
         ocr_model: Optional[str] = None,
         mcq_model: Optional[str] = None,
+        show_progress: bool = False,
     ) -> MCQSet:
         with self._with_overrides(api_key_override, prompt_log_path,
                                   ocr_model=ocr_model, mcq_model=mcq_model):
@@ -528,6 +533,7 @@ class MCQGenerator:
                 difficulty_mix=difficulty_mix,
                 focus_topics=focus_topics,
                 custom_instructions=custom_instructions,
+                show_progress=show_progress,
             )
 
             if enrich_images and self.method == "images2mcq":
@@ -551,6 +557,7 @@ class MCQGenerator:
         prompt_log_path: Optional[str] = None,
         ocr_model: Optional[str] = None,
         mcq_model: Optional[str] = None,
+        show_progress: bool = False,
     ) -> MCQSet:
         with self._with_overrides(api_key_override, prompt_log_path,
                                   ocr_model=ocr_model, mcq_model=mcq_model):
@@ -564,6 +571,7 @@ class MCQGenerator:
                     difficulty_mix=difficulty_mix,
                     focus_topics=focus_topics,
                     custom_instructions=custom_instructions,
+                    show_progress=show_progress,
                 )
             all_qs = self._vision_mcq(
                 blocks, n=n, page_title=title,
@@ -585,6 +593,7 @@ class MCQGenerator:
         prompt_log_path: Optional[str] = None,
         ocr_model: Optional[str] = None,
         mcq_model: Optional[str] = None,
+        show_progress: bool = False,
     ) -> MCQSet:
         with self._with_overrides(api_key_override, prompt_log_path,
                                   ocr_model=ocr_model, mcq_model=mcq_model):
@@ -603,6 +612,7 @@ class MCQGenerator:
                     difficulty_mix=difficulty_mix,
                     focus_topics=focus_topics,
                     custom_instructions=custom_instructions,
+                    show_progress=show_progress,
                 )
             all_qs = self._vision_mcq(
                 blocks, n=n, page_title=title,
@@ -617,6 +627,7 @@ class MCQGenerator:
         urls: Union[str, List[str]],
         n: int = 999,
         pdf_title: str = "",
+        pages: Optional[str] = None,
         difficulty_mix: Optional[str] = None,
         focus_topics: Optional[List[str]] = None,
         custom_instructions: Optional[str] = None,
@@ -624,18 +635,23 @@ class MCQGenerator:
         prompt_log_path: Optional[str] = None,
         ocr_model: Optional[str] = None,
         mcq_model: Optional[str] = None,
+        show_progress: bool = False,
     ) -> MCQSet:
         with self._with_overrides(api_key_override, prompt_log_path,
                                   ocr_model=ocr_model, mcq_model=mcq_model):
             if isinstance(urls, str):
                 urls = [urls]
+            page_nums = _parse_page_range(pages)
             title = pdf_title or (urls[0].split("/")[-1].replace(".pdf", "").replace("-", " ").replace("_", " ").title()
                                   if len(urls) == 1 else "PDFs")
             if self.method == "images2mcq":
                 all_pngs: List[bytes] = []
                 for url in urls:
                     pdf_bytes = _fetch_bytes(url, timeout=30)
-                    rendered = _render_pdf_pages_to_pngs(pdf_bytes, max_pages=self.pdf_extractor.scanned_max_pages)
+                    if page_nums is not None:
+                        rendered = _render_specific_pages(pdf_bytes, page_nums, max_pages=self.pdf_extractor.scanned_max_pages)
+                    else:
+                        rendered = _render_pdf_pages_to_pngs(pdf_bytes, max_pages=self.pdf_extractor.scanned_max_pages)
                     all_pngs.extend(rendered)
                 if not all_pngs:
                     raise ValueError("No pages could be rendered from PDF(s)")
@@ -646,12 +662,17 @@ class MCQGenerator:
                 return self._build_mcq_set(all_qs, n, title, urls[0], [])
             all_blocks: List[ContentBlock] = []
             for url in urls:
-                blocks = self.pdf_extractor.from_url(url)
+                blocks = self.pdf_extractor.from_url(url, page_numbers=page_nums)
                 if not blocks:
                     raise ValueError(f"No text could be extracted from PDF: {url}")
                 all_blocks.extend(blocks)
             if not all_blocks:
                 raise ValueError("No text could be extracted from any PDF")
+            save_ocr_path = getattr(self, 'save_ocr_path', None)
+            if save_ocr_path:
+                ocr_text = "\n".join(b.content for b in all_blocks if b.content)
+                Path(save_ocr_path).write_text(ocr_text, encoding="utf-8")
+                print(f"  [html2mcq] OCR text saved to: {save_ocr_path}")
             all_qs, _ = self._generate(
                 blocks=all_blocks,
                 n=n,
@@ -660,6 +681,7 @@ class MCQGenerator:
                 difficulty_mix=difficulty_mix,
                 focus_topics=focus_topics,
                 custom_instructions=custom_instructions,
+                show_progress=show_progress,
             )
             return self._build_mcq_set(all_qs, n, title, urls[0], all_blocks)
 
@@ -668,6 +690,7 @@ class MCQGenerator:
         paths: Union[str, List[str]],
         n: int = 999,
         pdf_title: str = "",
+        pages: Optional[str] = None,
         difficulty_mix: Optional[str] = None,
         focus_topics: Optional[List[str]] = None,
         custom_instructions: Optional[str] = None,
@@ -675,18 +698,23 @@ class MCQGenerator:
         prompt_log_path: Optional[str] = None,
         ocr_model: Optional[str] = None,
         mcq_model: Optional[str] = None,
+        show_progress: bool = False,
     ) -> MCQSet:
         with self._with_overrides(api_key_override, prompt_log_path,
                                   ocr_model=ocr_model, mcq_model=mcq_model):
             if isinstance(paths, str):
                 paths = [paths]
+            page_nums = _parse_page_range(pages)
             title = pdf_title or (Path(paths[0]).stem.replace("-", " ").replace("_", " ").title()
                                   if len(paths) == 1 else "PDFs")
             if self.method == "images2mcq":
                 all_pngs: List[bytes] = []
                 for p in paths:
                     pdf_bytes = Path(p).read_bytes()
-                    rendered = _render_pdf_pages_to_pngs(pdf_bytes, max_pages=self.pdf_extractor.scanned_max_pages)
+                    if page_nums is not None:
+                        rendered = _render_specific_pages(pdf_bytes, page_nums, max_pages=self.pdf_extractor.scanned_max_pages)
+                    else:
+                        rendered = _render_pdf_pages_to_pngs(pdf_bytes, max_pages=self.pdf_extractor.scanned_max_pages)
                     all_pngs.extend(rendered)
                 if not all_pngs:
                     raise ValueError("No pages could be rendered from PDF(s)")
@@ -697,12 +725,17 @@ class MCQGenerator:
                 return self._build_mcq_set(all_qs, n, title, f"file://{paths[0]}", [])
             all_blocks: List[ContentBlock] = []
             for p in paths:
-                blocks = self.pdf_extractor.from_path(p)
+                blocks = self.pdf_extractor.from_path(p, page_numbers=page_nums)
                 if not blocks:
                     raise ValueError(f"No text could be extracted from PDF: {p}")
                 all_blocks.extend(blocks)
             if not all_blocks:
                 raise ValueError("No text could be extracted from any PDF")
+            save_ocr_path = getattr(self, 'save_ocr_path', None)
+            if save_ocr_path:
+                ocr_text = "\n".join(b.content for b in all_blocks if b.content)
+                Path(save_ocr_path).write_text(ocr_text, encoding="utf-8")
+                print(f"  [html2mcq] OCR text saved to: {save_ocr_path}")
             all_qs, _ = self._generate(
                 blocks=all_blocks,
                 n=n,
@@ -711,6 +744,7 @@ class MCQGenerator:
                 difficulty_mix=difficulty_mix,
                 focus_topics=focus_topics,
                 custom_instructions=custom_instructions,
+                show_progress=show_progress,
             )
             return self._build_mcq_set(all_qs, n, title, f"file://{paths[0]}", all_blocks)
 
@@ -895,6 +929,7 @@ class MCQGenerator:
         difficulty_mix: Optional[str] = None,
         focus_topics: Optional[List[str]] = None,
         custom_instructions: Optional[str] = None,
+        show_progress: bool = False,
     ) -> MCQSet:
         """OCR images to text, optionally save to file, then generate MCQs from text."""
         image_bytes_list: List[bytes] = []
@@ -924,6 +959,7 @@ class MCQGenerator:
             difficulty_mix=difficulty_mix,
             focus_topics=focus_topics,
             custom_instructions=custom_instructions,
+            show_progress=show_progress,
         )
         return self._build_mcq_set(all_qs, n, title, source, blocks)
 
@@ -1049,6 +1085,7 @@ class MCQGenerator:
         difficulty_mix: Optional[str],
         focus_topics: Optional[List[str]],
         custom_instructions: Optional[str] = None,
+        show_progress: bool = False,
     ) -> Tuple[List[MCQQuestion], str]:
         if not blocks:
             return [], ""
@@ -1057,6 +1094,23 @@ class MCQGenerator:
         system_prompt = build_system_prompt()
         remaining = n
 
+        try:
+            from tqdm import tqdm as _tqdm
+            _pbar = _tqdm(total=n, desc="MCQ", unit="q", disable=not show_progress)
+        except ImportError:
+            _pbar = None
+        _total_batches = (n + self.batch_size - 1) // self.batch_size if n < 9999 else None
+        _batch_count = 0
+
+        def _report(questions):
+            nonlocal _batch_count
+            _batch_count += 1
+            if _pbar is not None:
+                _pbar.update(len(questions))
+            elif show_progress and _total_batches is not None:
+                print(f"  [html2mcq] Batch {_batch_count}/{_total_batches}: "
+                      f"{len(questions)} questions", file=__import__('sys').stderr)
+
         # ── Resolve MCQ model (supports auto mode) ──
         if self.mcq_model == "auto":
             model_list = self._resolve_mcq_model_list(self.mcq_model_list)
@@ -1064,8 +1118,7 @@ class MCQGenerator:
                 model_name = entry["model"]
                 model_tokens = entry["max_tokens"]
                 self.backend.mcq_model = model_name
-                # Use model's max_tokens to send all questions in one call
-                est_tokens_per_q = 500  # output tokens per MCQ (generous)
+                est_tokens_per_q = 500
                 requested_output = n * est_tokens_per_q + 200
                 batch_max_tokens = min(model_tokens, requested_output)
                 max_per_call = max(1, batch_max_tokens // est_tokens_per_q)
@@ -1084,10 +1137,11 @@ class MCQGenerator:
                     raw = self.backend.complete(system_prompt, user_prompt, batch_max_tokens)
                     batch = self._parse_response(raw)
                 except Exception as e:
-                    print(f"  [html2mcq] ⚠ MCQ model '{model_name}' failed: {e}")
+                    print(f"  [html2mcq] \u26a0 MCQ model '{model_name}' failed: {e}")
                     continue
                 if batch:
                     all_questions.extend(batch)
+                    _report(batch)
                     remaining -= len(batch)
                     print(f"  [html2mcq] OK MCQ model '{model_name}' selected "
                           f"({len(batch)} questions, {batch_max_tokens} max_tokens)")
@@ -1096,7 +1150,8 @@ class MCQGenerator:
                 raise RuntimeError(
                     f"All MCQ models in list failed: {[e['model'] for e in model_list]}"
                 )
-            # Auto mode already sent all questions in one batch
+            if _pbar is not None:
+                _pbar.close()
             all_questions = all_questions[:n]
             summary = self._build_summary(blocks)
             return all_questions, summary
@@ -1116,6 +1171,7 @@ class MCQGenerator:
             raw = self.backend.complete(system_prompt, user_prompt, self.max_tokens)
             batch_questions = self._parse_response(raw)
             all_questions.extend(batch_questions)
+            _report(batch_questions)
             remaining -= len(batch_questions)
 
             if len(batch_questions) == 0:
@@ -1123,6 +1179,8 @@ class MCQGenerator:
             if remaining > 0 and len(batch_questions) < batch_n:
                 break
 
+        if _pbar is not None:
+            _pbar.close()
         all_questions = all_questions[:n]
         summary = self._build_summary(blocks)
         return all_questions, summary

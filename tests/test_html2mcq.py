@@ -1332,21 +1332,21 @@ class TestPdfEdgeCases:
     def test_pdf_urls_empty_pdf_raises(self):
         from html2mcq.generator import MCQGenerator
         gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
-        gen.pdf_extractor.from_url = lambda url: []
+        gen.pdf_extractor.from_url = lambda url, **kw: []
         with pytest.raises(ValueError, match="No text could be extracted from PDF"):
             gen.from_pdf_urls("https://example.com/test.pdf", n=2)
 
     def test_pdf_paths_empty_pdf_raises(self, tmp_path):
         from html2mcq.generator import MCQGenerator
         gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
-        gen.pdf_extractor.from_path = lambda path: []
+        gen.pdf_extractor.from_path = lambda path, **kw: []
         with pytest.raises(ValueError, match="No text could be extracted from PDF"):
             gen.from_pdf_paths(str(tmp_path / "test.pdf"), n=2)
 
     def test_pdf_urls_single_string_to_list(self):
         from html2mcq.generator import MCQGenerator
         gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
-        gen.pdf_extractor.from_url = lambda url: [ContentBlock(type="pdf_text", content="test")]
+        gen.pdf_extractor.from_url = lambda url, **kw: [ContentBlock(type="pdf_text", content="test")]
         mock_backend = MagicMock()
         mock_backend.complete.return_value = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explaination":""}]'
         mock_backend.mcq_model = "test"

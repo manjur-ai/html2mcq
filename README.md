@@ -143,7 +143,20 @@ mcq = gen.from_image_paths([
 ], n=15)
 ```
 
-### 8. Generate as many questions as possible
+### 8. Page range for PDFs
+
+```python
+# Only process specific pages (1-indexed)
+mcq = gen.from_pdf_urls("https://example.com/textbook.pdf", n=10, pages="1-10,15,20-25")
+```
+
+### 9. Progress bar during generation
+
+```python
+mcq = gen.from_pdf_urls("https://example.com/textbook.pdf", n=10, show_progress=True)
+```
+
+### 11. Generate as many questions as possible
 
 ```python
 # When n=999, the AI covers every distinct topic in the content
@@ -172,7 +185,7 @@ mcq = gen.from_url(
 )
 ```
 
-### 11. Pre-extracted content blocks
+### 12. Pre-extracted content blocks
 
 ```python
 from html2mcq import MCQGenerator, ContentExtractor
@@ -185,7 +198,7 @@ code_blocks = [b for b in blocks if b.type == "code"]
 mcq = gen.from_blocks(code_blocks, n=5)
 ```
 
-### 12. Save output to JSON file
+### 14. Save output to JSON file
 
 ```python
 import json
@@ -195,7 +208,7 @@ with open("quiz.json", "w") as f:
     json.dump(mcq.to_json(), f, indent=2)
 ```
 
-### 13. Filter questions by difficulty
+### 15. Filter questions by difficulty
 
 ```python
 mcq = gen.from_url("https://docs.python.org/3/tutorial/", n=20)
@@ -205,7 +218,7 @@ hard = mcq.filter_by_difficulty("hard")
 print(f"Easy: {len(easy)}, Medium: {len(medium)}, Hard: {len(hard)}")
 ```
 
-### 14. Different AI provider — Anthropic
+### 16. Different AI provider — Anthropic
 
 ```python
 gen = MCQGenerator(
@@ -216,7 +229,7 @@ gen = MCQGenerator(
 mcq = gen.from_url("https://docs.python.org/3/tutorial/", n=10)
 ```
 
-### 15. Local Ollama (no API key needed)
+### 17. Local Ollama (no API key needed)
 
 ```python
 gen = MCQGenerator(
@@ -287,14 +300,16 @@ gen.from_image_paths("chart.png", n=5)
 
 ## Per-Call Overrides
 
-All 7 public methods accept `api_key_override` and `prompt_log_path`:
+All 7 public methods accept `api_key_override`, `prompt_log_path`, `ocr_model`, and `mcq_model`:
 
 ```python
 mcq = gen.from_url(
     "https://example.com/",
     n=10,
-    api_key_override="sk-or-v1-...",       # different key for this call
-    prompt_log_path="debug_prompt.txt",    # log prompts for this call only
+    api_key_override="sk-or-v1-...",          # different key for this call
+    prompt_log_path="debug_prompt.txt",       # log prompts for this call only
+    ocr_model="google/gemini-2.5-flash-lite", # override OCR model for this call
+    mcq_model="openai/gpt-4o",               # override MCQ model for this call
 )
 ```
 
@@ -386,7 +401,7 @@ mcq = gen.from_url("https://example.com/", n=10,
 ### `MCQGenerator`
 
 | Parameter | Default | Description |
-|---|---|---|
+|---|---|---|---|
 | `provider` | `"openrouter"` | `"openrouter"` | `"anthropic"` | `"openai"` | `"ollama"` |
 | `api_key` | `None` | API key or env var |
 | `api_key_override` | `None` | Override key for this instance |
@@ -394,10 +409,18 @@ mcq = gen.from_url("https://example.com/", n=10,
 | `mcq_model_list` | `None` | Fallback models for auto mode |
 | `ocr_model` | `"pytesseract"` | OCR backend: `"pytesseract"` | `"auto"` | model ID |
 | `ocr_models` | `None` | Priority list for auto OCR |
+| `ocr_fallback` | `True` | Fall back to Tesseract when vision API fails |
+| `ocr_lang` | `"eng"` | Tesseract language code |
 | `method` | `"twostep"` | `"twostep"` (OCR→MCQ) | `"images2mcq"` |
+| `save_ocr_path` | `None` | Save OCR text to file when `method="twostep"` |
 | `prompt_log_path` | `None` | Dump prompts to file/terminal |
 | `batch_size` | `10` | Questions per API call |
+| `max_tokens` | `4096` | Max tokens per API response |
 | `custom_instructions` | `None` | Global custom instructions |
+| `extractor_kwargs` | `None` | Keyword args forwarded to `ContentExtractor` |
+| `pdf_backend` | `"auto_detect"` | PDF extraction backend |
+| `pdf_scanned_max_pages` | `50` | Max pages to OCR for scanned PDFs |
+| `pdf_chunk_size` | `1500` | Characters per chunk for PDFs |
 
 | Method | Description |
 |---|---|
@@ -409,7 +432,7 @@ mcq = gen.from_url("https://example.com/", n=10,
 | `from_image_paths(paths, n, ...)` | Local image files → MCQ |
 | `from_blocks(blocks, n, ...)` | Pre-extracted `ContentBlock` list |
 
-All methods accept `api_key_override`, `prompt_log_path`, `difficulty_mix`, `focus_topics`, `custom_instructions`.
+All methods accept `api_key_override`, `prompt_log_path`, `ocr_model`, `mcq_model`, `difficulty_mix`, `focus_topics`, `custom_instructions`, `show_progress`. PDF methods additionally accept `pages`.
 
 ### `MCQSet`
 
@@ -464,6 +487,24 @@ html2mcq https://example.com/tutorial --difficulty "40% easy, 40% medium, 20% ha
 
 # Custom instructions
 html2mcq https://example.com/tutorial -i "Make answers very close and confusing"
+
+# Override OCR model per call
+html2mcq --image-folder ./slides/ --ocr-model "google/gemini-2.5-flash-lite"
+
+# Override MCQ model per call
+html2mcq --pdf-folder ./notes/ --mcq-model "openai/gpt-4o"
+
+# Save OCR text to file
+html2mcq --image-folder ./slides/ --method twostep --save-ocr-path ocr_output.txt
+
+# Page range (only process specific pages)
+html2mcq --pdf-url https://example.com/textbook.pdf --pages "1-10,15,20-25"
+
+# Show progress bar during MCQ generation
+html2mcq --pdf-folder ./textbooks/ --progress
+
+# PDF processing options
+html2mcq --pdf-folder ./textbooks/ --pdf-backend pymupdf --scanned-max-pages 100
 
 # AI provider and model
 html2mcq https://example.com/tutorial --provider openai --mcq-model gpt-4o --api-key sk-...

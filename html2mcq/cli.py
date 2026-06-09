@@ -94,6 +94,10 @@ def main():
     gen_group.add_argument("--topics", nargs="*", help="Focus topics")
     gen_group.add_argument("--instructions", "-i", default="",
                            help='Custom instructions e.g. "Make answers very close and confusing"')
+    gen_group.add_argument("--pages", default=None,
+                           help='Page range for PDFs e.g. "1-10,15,20-25" (1-indexed)')
+    gen_group.add_argument("--progress", action="store_true",
+                           help="Show progress bar during MCQ generation")
     gen_group.add_argument("--batch-size", type=int, default=10,
                            help="Questions per API call (default: 10)")
 
@@ -129,6 +133,14 @@ def main():
     ocr_group.add_argument("--prompt-log-path", default="",
                            help="Dump prompts to file, or 'stdout' / '-' for terminal")
 
+    # PDF processing
+    pdf_group = parser.add_argument_group("PDF processing")
+    pdf_group.add_argument("--pdf-backend", default="auto_detect",
+                           choices=["auto_detect", "pymupdf", "image"],
+                           help="PDF extraction backend (default: auto_detect)")
+    pdf_group.add_argument("--scanned-max-pages", type=int, default=50,
+                           help="Max pages to OCR for scanned PDFs (default: 50)")
+
     # Output
     out_group = parser.add_argument_group("Output")
     out_group.add_argument("--output", "-o", default="",
@@ -162,7 +174,7 @@ def main():
 
     # Lazy import
     try:
-        from html2mcq import MCQGenerator, ContentExtractor
+        from html2mcq import MCQGenerator
     except ImportError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
@@ -187,6 +199,8 @@ def main():
             method=args.method,
             save_ocr_path=args.save_ocr_path or None,
             prompt_log_path=args.prompt_log_path or None,
+            pdf_backend=args.pdf_backend,
+            pdf_scanned_max_pages=args.scanned_max_pages,
             ollama_base_url=args.ollama_base_url,
         )
     except ValueError as e:
@@ -207,35 +221,43 @@ def main():
                 html = f.read()
             mcq_set = gen.from_html(html, n=n, difficulty_mix=difficulty,
                                     focus_topics=topics, custom_instructions=instructions,
-                                    ocr_model=args.ocr_model, mcq_model=args.mcq_model)
+                                    ocr_model=args.ocr_model, mcq_model=args.mcq_model,
+                                    show_progress=args.progress)
 
         elif args.url:
             print(f"Fetching and analysing: {args.url}", file=sys.stderr)
             mcq_set = gen.from_url(args.url, n=n, difficulty_mix=difficulty,
                                    focus_topics=topics, custom_instructions=instructions,
-                                   ocr_model=args.ocr_model, mcq_model=args.mcq_model)
+                                   ocr_model=args.ocr_model, mcq_model=args.mcq_model,
+                                   show_progress=args.progress)
 
         elif args.pdf_url or args.pdf_path:
             if args.pdf_url:
                 print(f"Fetching PDFs: {args.pdf_url}", file=sys.stderr)
-                mcq_set = gen.from_pdf_urls(args.pdf_url, n=n, difficulty_mix=difficulty,
+                mcq_set = gen.from_pdf_urls(args.pdf_url, n=n, pages=args.pages,
+                                            difficulty_mix=difficulty,
                                             focus_topics=topics, custom_instructions=instructions,
-                                            ocr_model=args.ocr_model, mcq_model=args.mcq_model)
+                                            ocr_model=args.ocr_model, mcq_model=args.mcq_model,
+                                            show_progress=args.progress)
             if args.pdf_path:
                 print(f"Reading PDFs: {args.pdf_path}", file=sys.stderr)
-                mcq_set = gen.from_pdf_paths(args.pdf_path, n=n, difficulty_mix=difficulty,
+                mcq_set = gen.from_pdf_paths(args.pdf_path, n=n, pages=args.pages,
+                                             difficulty_mix=difficulty,
                                              focus_topics=topics, custom_instructions=instructions,
-                                             ocr_model=args.ocr_model, mcq_model=args.mcq_model)
+                                             ocr_model=args.ocr_model, mcq_model=args.mcq_model,
+                                             show_progress=args.progress)
 
         elif args.image_url or args.image_path:
             if args.image_url:
                 mcq_set = gen.from_image_urls(args.image_url, n=n, difficulty_mix=difficulty,
                                               focus_topics=topics, custom_instructions=instructions,
-                                              ocr_model=args.ocr_model, mcq_model=args.mcq_model)
+                                              ocr_model=args.ocr_model, mcq_model=args.mcq_model,
+                                              show_progress=args.progress)
             if args.image_path:
                 mcq_set = gen.from_image_paths(args.image_path, n=n, difficulty_mix=difficulty,
                                                focus_topics=topics, custom_instructions=instructions,
-                                               ocr_model=args.ocr_model, mcq_model=args.mcq_model)
+                                               ocr_model=args.ocr_model, mcq_model=args.mcq_model,
+                                               show_progress=args.progress)
 
     except Exception as e:
         print(f"Generation failed: {e}", file=sys.stderr)
