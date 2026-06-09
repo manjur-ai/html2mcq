@@ -7,6 +7,8 @@ Usage examples
 html2mcq https://docs.python.org/3/tutorial/
 html2mcq https://example.com/tutorial --provider openai --output quiz.json
 html2mcq --html page.html --difficulty "50% easy, 50% medium"
+html2mcq --html-string '<html><body><h1>Python</h1></body></html>' -n 5
+html2mcq --html-folder ./tutorials/
 html2mcq --pdf-url https://example.com/notes.pdf -o questions.json --format json
 html2mcq --pdf-path ./textbook.pdf --image-path ./diagram.png
 html2mcq --image-folder ./slides/ --method images2mcq
@@ -72,6 +74,9 @@ def main():
     input_group = parser.add_argument_group("Input sources (at least one required)")
     input_group.add_argument("url", nargs="?", metavar="URL", help="URL of a tutorial page")
     input_group.add_argument("--html", metavar="FILE", help="Path to a local HTML file")
+    input_group.add_argument("--html-string", metavar="HTML", help="Raw HTML string content")
+    input_group.add_argument("--html-folder", metavar="DIR", default="",
+                             help="Scan folder for HTML files (.html, .htm)")
     input_group.add_argument("--pdf-url", metavar="URL", action="append", default=[],
                              help="PDF URL (repeatable: --pdf-url url1 --pdf-url url2)")
     input_group.add_argument("--pdf-path", metavar="FILE", action="append", default=[],
@@ -165,11 +170,12 @@ def main():
         args.pdf_path.extend(_glob_files(args.pdf_folder, {_PDF_EXTENSION}))
 
     # Validate input
-    has_input = bool(args.url or args.html or args.pdf_url or args.pdf_path
+    has_input = bool(args.url or args.html or args.html_string or args.html_folder
+                     or args.pdf_url or args.pdf_path
                      or args.image_url or args.image_path)
     if not has_input:
         parser.print_help()
-        print("\nError: at least one input source is required (URL, --html, --pdf-url, --pdf-path, --image-url, --image-path, --image-folder, --pdf-folder)", file=sys.stderr)
+        print("\nError: at least one input source is required (URL, --html, --html-string, --html-folder, --pdf-url, --pdf-path, --image-url, --image-path, --image-folder, --pdf-folder)", file=sys.stderr)
         sys.exit(1)
 
     # Lazy import
@@ -215,14 +221,25 @@ def main():
     mcq_set = None
 
     try:
-        # Priority: --html, URL, --pdf-url/path, --image-url/path
+        # Priority: --html/--html-string/--html-folder, URL, --pdf-url/path, --image-url/path
         if args.html:
-            with open(args.html, encoding="utf-8") as f:
-                html = f.read()
-            mcq_set = gen.from_html(html, n=n, difficulty_mix=difficulty,
-                                    focus_topics=topics, custom_instructions=instructions,
-                                    ocr_model=args.ocr_model, mcq_model=args.mcq_model,
-                                    show_progress=args.progress)
+            mcq_set = gen.from_html_path(args.html, n=n, difficulty_mix=difficulty,
+                                         focus_topics=topics, custom_instructions=instructions,
+                                         ocr_model=args.ocr_model, mcq_model=args.mcq_model,
+                                         show_progress=args.progress)
+
+        elif args.html_string:
+            mcq_set = gen.from_html_string(args.html_string, n=n, difficulty_mix=difficulty,
+                                           focus_topics=topics, custom_instructions=instructions,
+                                           ocr_model=args.ocr_model, mcq_model=args.mcq_model,
+                                           show_progress=args.progress)
+
+        elif args.html_folder:
+            print(f"Scanning HTML folder: {args.html_folder}", file=sys.stderr)
+            mcq_set = gen.from_html_folder(args.html_folder, n=n, difficulty_mix=difficulty,
+                                           focus_topics=topics, custom_instructions=instructions,
+                                           ocr_model=args.ocr_model, mcq_model=args.mcq_model,
+                                           show_progress=args.progress)
 
         elif args.url:
             print(f"Fetching and analysing: {args.url}", file=sys.stderr)

@@ -60,6 +60,9 @@ print(mcq.to_pretty_str())
 | Local PDF file | `from_pdf_paths(path)` | ✅ `list[str]` |
 | Image files (local) | `from_image_paths(path)` | ✅ `list[str]` |
 | Image URLs | `from_image_urls(url)` | ✅ `list[str]` |
+| Raw HTML string | `from_html_string(html)` / `from_html(html)` | ❌ single string |
+| Local HTML file | `from_html_path(path)` | ❌ single path |
+| HTML folder | `from_html_folder(folder)` | ✅ folder scan |
 | Pre-built content blocks | `from_blocks(blocks)` | ❌ single list |
 
 ---
@@ -92,7 +95,19 @@ mcq = gen.from_html(html_string, n=3)
 print(mcq.to_json())
 ```
 
-### 3. Multiple PDF URLs in batch
+### 3. Local HTML file
+
+```python
+mcq = gen.from_html_path("/path/to/tutorial.html", n=5)
+```
+
+### 4. Scan HTML folder
+
+```python
+mcq = gen.from_html_folder("./tutorials/", n=20)
+```
+
+### 5. Multiple PDF URLs in batch
 
 ```python
 mcq = gen.from_pdf_urls([
@@ -102,7 +117,7 @@ mcq = gen.from_pdf_urls([
 ], n=20)
 ```
 
-### 4. Local PDF files
+### 6. Local PDF files
 
 ```python
 mcq = gen.from_pdf_paths([
@@ -111,7 +126,7 @@ mcq = gen.from_pdf_paths([
 ], n=15)
 ```
 
-### 5. Image files with OCR (two-step)
+### 7. Image files with OCR (two-step)
 
 ```python
 gen = MCQGenerator(
@@ -123,7 +138,7 @@ gen = MCQGenerator(
 mcq = gen.from_image_paths("screenshot.png", n=5)
 ```
 
-### 6. Image URLs via vision model (direct)
+### 8. Image URLs via vision model (direct)
 
 ```python
 gen = MCQGenerator(
@@ -133,7 +148,7 @@ gen = MCQGenerator(
 mcq = gen.from_image_urls("https://example.com/diagram.png", n=5)
 ```
 
-### 7. Batch image files
+### 9. Batch image files
 
 ```python
 mcq = gen.from_image_paths([
@@ -426,6 +441,9 @@ mcq = gen.from_url("https://example.com/", n=10,
 |---|---|
 | `from_url(url, n, ...)` | HTML page |
 | `from_html(html, n, ...)` | Raw HTML string |
+| `from_html_string(html, n, ...)` | Alias for `from_html` |
+| `from_html_path(path, n, ...)` | Local HTML file |
+| `from_html_folder(folder, n, ...)` | Scan folder for .html files |
 | `from_pdf_urls(urls, n, ...)` | PDF via URL (str or list) |
 | `from_pdf_paths(paths, n, ...)` | Local PDF file (str or list) |
 | `from_image_urls(urls, n, ...)` | Image URLs → MCQ via vision |
@@ -454,6 +472,12 @@ html2mcq https://docs.python.org/3/tutorial/
 
 # Local HTML file
 html2mcq --html ./tutorial.html
+
+# Raw HTML string
+html2mcq --html-string '<html><body><h1>Python</h1></body></html>'
+
+# Scan HTML folder
+html2mcq --html-folder ./tutorials/
 
 # PDF URL (repeatable)
 html2mcq --pdf-url https://example.com/chapter1.pdf --pdf-url https://example.com/chapter2.pdf

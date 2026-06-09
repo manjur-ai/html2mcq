@@ -439,6 +439,7 @@ class MCQGenerator:
         mcq_model: Optional[str] = None,
         show_progress: bool = False,
     ) -> MCQSet:
+        """Generate MCQs from a raw HTML string."""
         with self._with_overrides(api_key_override, prompt_log_path,
                                   ocr_model=ocr_model, mcq_model=mcq_model):
             title, blocks = self.extractor.from_html(html, base_url=base_url)
@@ -467,6 +468,72 @@ class MCQGenerator:
                     all_qs.extend(vision_qs)
 
             return self._build_mcq_set(all_qs, n, title, base_url or None, blocks)
+
+    from_html_string = from_html
+
+    def from_html_path(
+        self,
+        path: str,
+        n: int = 999,
+        base_url: str = "",
+        difficulty_mix: Optional[str] = None,
+        focus_topics: Optional[List[str]] = None,
+        enrich_pdfs: bool = True,
+        enrich_images: bool = True,
+        custom_instructions: Optional[str] = None,
+        api_key_override: Optional[str] = None,
+        prompt_log_path: Optional[str] = None,
+        ocr_model: Optional[str] = None,
+        mcq_model: Optional[str] = None,
+        show_progress: bool = False,
+    ) -> MCQSet:
+        """Read a local HTML file and generate MCQs from it."""
+        html = Path(path).read_text(encoding="utf-8")
+        return self.from_html(
+            html, n=n, base_url=base_url or path,
+            difficulty_mix=difficulty_mix, focus_topics=focus_topics,
+            enrich_pdfs=enrich_pdfs, enrich_images=enrich_images,
+            custom_instructions=custom_instructions,
+            api_key_override=api_key_override, prompt_log_path=prompt_log_path,
+            ocr_model=ocr_model, mcq_model=mcq_model,
+            show_progress=show_progress,
+        )
+
+    def from_html_folder(
+        self,
+        folder: str,
+        n: int = 999,
+        base_url: str = "",
+        difficulty_mix: Optional[str] = None,
+        focus_topics: Optional[List[str]] = None,
+        enrich_pdfs: bool = True,
+        enrich_images: bool = True,
+        custom_instructions: Optional[str] = None,
+        api_key_override: Optional[str] = None,
+        prompt_log_path: Optional[str] = None,
+        ocr_model: Optional[str] = None,
+        mcq_model: Optional[str] = None,
+        show_progress: bool = False,
+    ) -> MCQSet:
+        """Scan a folder for .html files and generate MCQs from all of them."""
+        folder_path = Path(folder)
+        if not folder_path.is_dir():
+            raise ValueError(f"Folder not found: {folder}")
+        html_files = sorted(f for f in folder_path.iterdir() if f.suffix.lower() in (".html", ".htm"))
+        if not html_files:
+            raise ValueError(f"No HTML files found in: {folder}")
+        combined = []
+        for f in html_files:
+            combined.append(f"<!-- Source: {f.name} -->\n{f.read_text(encoding='utf-8')}")
+        return self.from_html(
+            "\n\n".join(combined), n=n, base_url=base_url or folder,
+            difficulty_mix=difficulty_mix, focus_topics=focus_topics,
+            enrich_pdfs=enrich_pdfs, enrich_images=enrich_images,
+            custom_instructions=custom_instructions,
+            api_key_override=api_key_override, prompt_log_path=prompt_log_path,
+            ocr_model=ocr_model, mcq_model=mcq_model,
+            show_progress=show_progress,
+        )
 
     def from_blocks(
         self,
