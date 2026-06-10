@@ -604,10 +604,10 @@ class PDFExtractor:
                     for kw in ("insufficient", "balance", "quota", "credits", "402", "payment")
                 )
                 if no_balance:
-                    print(f"  [html2mcq] \u26a0 ({self.vision_provider}) '{self.scanned_backend}': insufficient balance")
+                    print(f"  [html2mcq] ! ({self.vision_provider}) '{self.scanned_backend}': insufficient balance")
                 else:
                     err_msg_line = err_msg.split('\n')[0][:100]
-                    print(f"  [html2mcq] \u26a0 ({self.vision_provider}) '{self.scanned_backend}' failed: {err_msg_line}")
+                    print(f"  [html2mcq] ! ({self.vision_provider}) '{self.scanned_backend}' failed: {err_msg_line}")
                 # Fall back to auto, skipping the failed model
                 fallback = [m for m in self._ocr_models if m != self.scanned_backend]
                 if fallback:
@@ -703,10 +703,10 @@ class PDFExtractor:
                             for kw in ("insufficient", "balance", "quota", "credits", "402", "payment")
                         )
                         if no_balance:
-                            print(f"  [html2mcq] \u26a0 ({self.vision_provider}) '{self.scanned_backend}': insufficient balance")
+                            print(f"  [html2mcq] ! ({self.vision_provider}) '{self.scanned_backend}': insufficient balance")
                         else:
                             err_msg_line = err_msg.split('\n')[0][:100]
-                            print(f"  [html2mcq] \u26a0 ({self.vision_provider}) '{self.scanned_backend}' failed: {err_msg_line}")
+                            print(f"  [html2mcq] ! ({self.vision_provider}) '{self.scanned_backend}' failed: {err_msg_line}")
                         # Fall back to auto, skipping the failed model
                         fallback = [m for m in self._ocr_models if m != self.scanned_backend]
                         if fallback:
@@ -813,10 +813,10 @@ class PDFExtractor:
                     for kw in ("insufficient", "balance", "quota", "credits", "402", "payment")
                 )
                 if no_balance:
-                    print(f"  [html2mcq] \u26a0 ({p_target}) '{current_model}': insufficient balance")
+                    print(f"  [html2mcq] ! ({p_target}) '{current_model}': insufficient balance")
                 else:
                     err_msg_line = err_msg.split('\n')[0][:100]
-                    print(f"  [html2mcq] \u26a0 ({p_target}) '{current_model}' failed: {err_msg_line}")
+                    print(f"  [html2mcq] ! ({p_target}) '{current_model}' failed: {err_msg_line}")
                 continue
         return ""
 

@@ -236,10 +236,10 @@ def _ocr_vision_with_fallback(
                 for kw in ("insufficient", "balance", "quota", "credits", "402", "payment")
             )
             if no_balance:
-                print(f"  [html2mcq] \u26a0 ({provider}) '{primary_model}': insufficient balance")
+                print(f"  [html2mcq] ! ({provider}) '{primary_model}': insufficient balance")
             else:
                 err_msg = str(e).split('\n')[0][:100]
-                print(f"  [html2mcq] \u26a0 ({provider}) '{primary_model}' failed: {err_msg}")
+                print(f"  [html2mcq] ! ({provider}) '{primary_model}' failed: {err_msg}")
 
     # 2. Free fallback model
     if free_model and free_model != primary_model:
@@ -251,7 +251,7 @@ def _ocr_vision_with_fallback(
             )
         except Exception as e:
             err_msg = str(e).split('\n')[0][:100]
-            print(f"  [html2mcq] \u26a0 ({provider}) '{free_model}' fallback failed: {err_msg}")
+            print(f"  [html2mcq] ! ({provider}) '{free_model}' fallback failed: {err_msg}")
 
     # 3. pytesseract last resort
     if fallback_to_tesseract:
@@ -612,8 +612,8 @@ class ImageOCRExtractor:
                     for kw in ("insufficient", "balance", "quota", "credits", "402", "payment")
                 )
                 if no_balance:
-                    print(f"  [html2mcq] \u26a0 ({p_target}) '{current_model}': insufficient balance")
+                    print(f"  [html2mcq] ! ({p_target}) '{current_model}': insufficient balance")
                 else:
                     err_msg_line = err_msg.split('\n')[0][:100]
-                    print(f"  [html2mcq] \u26a0 ({p_target}) '{current_model}' failed: {err_msg_line}")
+                    print(f"  [html2mcq] ! ({p_target}) '{current_model}' failed: {err_msg_line}")
                 continue

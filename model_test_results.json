@@ -1,0 +1,142 @@
+[
+  {
+    "model": "(gemini)/gemini-2.5-flash-lite",
+    "img": "img1",
+    "status": "ok",
+    "time": 13.7,
+    "q": 3
+  },
+  {
+    "model": "(gemini)/gemini-2.5-flash-lite",
+    "img": "img2",
+    "status": "ok",
+    "time": 18.8,
+    "q": 0
+  },
+  {
+    "model": "(gemini)/gemini-1.5-flash",
+    "img": "img1",
+    "status": "ok",
+    "time": 9.3,
+    "q": 0
+  },
+  {
+    "model": "(gemini)/gemini-1.5-flash",
+    "img": "img2",
+    "status": "ok",
+    "time": 9.4,
+    "q": 0
+  },
+  {
+    "model": "(groq)/meta-llama/llama-4-scout-17b-16e-instruct",
+    "img": "img1",
+    "status": "ok",
+    "time": 8.7,
+    "q": 0
+  },
+  {
+    "model": "(groq)/meta-llama/llama-4-scout-17b-16e-instruct",
+    "img": "img2",
+    "status": "ok",
+    "time": 8.5,
+    "q": 0
+  },
+  {
+    "model": "(openrouter)/google/gemma-4-31b-it:free",
+    "img": "img1",
+    "status": "ok",
+    "time": 29.2,
+    "q": 0
+  },
+  {
+    "model": "(openrouter)/google/gemma-4-31b-it:free",
+    "img": "img2",
+    "status": "ok",
+    "time": 25.6,
+    "q": 0
+  },
+  {
+    "model": "(openrouter)/google/gemma-4-26b-a4b-it:free",
+    "img": "img1",
+    "status": "ok",
+    "time": 20.8,
+    "q": 3
+  },
+  {
+    "model": "(openrouter)/google/gemma-4-26b-a4b-it:free",
+    "img": "img2",
+    "status": "ok",
+    "time": 28.3,
+    "q": 0
+  },
+  {
+    "model": "(openrouter)/google/gemma-3-27b-it:free",
+    "img": "img1",
+    "status": "ok",
+    "time": 9.2,
+    "q": 0
+  },
+  {
+    "model": "(openrouter)/google/gemma-3-27b-it:free",
+    "img": "img2",
+    "status": "ok",
+    "time": 9.0,
+    "q": 0
+  },
+  {
+    "model": "(openrouter)/google/gemini-2.0-flash-lite:free",
+    "img": "img1",
+    "status": "ok",
+    "time": 9.1,
+    "q": 0
+  },
+  {
+    "model": "(openrouter)/google/gemini-2.0-flash-lite:free",
+    "img": "img2",
+    "status": "ok",
+    "time": 9.2,
+    "q": 0
+  },
+  {
+    "model": "(openrouter)/nvidia/nemotron-nano-12b-v2-vl:free",
+    "img": "img1",
+    "status": "ok",
+    "time": 26.0,
+    "q": 0
+  },
+  {
+    "model": "(openrouter)/nvidia/nemotron-nano-12b-v2-vl:free",
+    "img": "img2",
+    "status": "ok",
+    "time": 26.1,
+    "q": 0
+  },
+  {
+    "model": "(openrouter)/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    "img": "img1",
+    "status": "ok",
+    "time": 25.7,
+    "q": 0
+  },
+  {
+    "model": "(openrouter)/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    "img": "img2",
+    "status": "ok",
+    "time": 25.8,
+    "q": 0
+  },
+  {
+    "model": "(openrouter)/google/gemma-3-12b-it:free",
+    "img": "img1",
+    "status": "ok",
+    "time": 9.2,
+    "q": 0
+  },
+  {
+    "model": "(openrouter)/google/gemma-3-12b-it:free",
+    "img": "img2",
+    "status": "ok",
+    "time": 10.8,
+    "q": 0
+  }
+]

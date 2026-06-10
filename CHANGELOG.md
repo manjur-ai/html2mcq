@@ -1,3 +1,8 @@
+## [3.3.1] - 2026-06-10
+### Fixed
+- **`ocr_models` not propagated to extractors**: The resolved priority list (`self.ocr_models`) was not passed to `ImageOCRExtractor` or `PDFExtractor` — the raw constructor parameter was used instead, causing the env-var fallback path in `_resolve_ocr_models` to always trigger on the server. This meant `HTML2MCQ_OCR_MODELS` set via `os.environ` in application code was ignored.
+- **Remaining `\u26a0` characters**: Replaced all remaining `\u26a0` (⚠) in `generator.py`, `image_ocr.py`, and `pdf.py` with `!` for Windows CP1252 compatibility.
+
 ## [3.3.0] - 2026-06-10
 ### Added
 - **Priority list fallback in `_vision_mcq`/`_vision_mcq_pdf`**: Vision methods now iterate through the full `ocr_models` priority list when the primary model fails (previously returned `[]` immediately on non-retryable errors like 402).

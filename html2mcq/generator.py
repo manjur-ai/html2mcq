@@ -750,7 +750,7 @@ class MCQGenerator:
             vision_free_model=_vision_free_model,
             vision_api_key=_key,
             ocr_fallback=ocr_fallback,
-            ocr_models=ocr_models,
+            ocr_models=self.ocr_models,
             available_keys=self.available_keys,
             max_tokens=self.max_tokens,
         )
@@ -767,7 +767,7 @@ class MCQGenerator:
             vision_api_key=_key,
             ocr_fallback=ocr_fallback,
             ocr_lang=ocr_lang,
-            ocr_models=ocr_models,
+            ocr_models=self.ocr_models,
             available_keys=self.available_keys,
             max_tokens=self.max_tokens,
         )
@@ -1385,12 +1385,12 @@ class MCQGenerator:
                 ))
                 raw = (resp.choices[0].message.content or "").strip()
                 if not raw:
-                    print(f"  [html2mcq] \u26a0 ({p_target}) '{model_name}' returned empty response")
+                    print(f"  [html2mcq] ! ({p_target}) '{model_name}' returned empty response")
                     continue
                 return self._parse_response(raw)
             except Exception as e:
                 err_msg = str(e).split('\n')[0][:100]
-                print(f"  [html2mcq] \u26a0 ({p_target}) '{model_name}' failed: {err_msg}")
+                print(f"  [html2mcq] ! ({p_target}) '{model_name}' failed: {err_msg}")
                 continue
 
         return []
@@ -1507,12 +1507,12 @@ class MCQGenerator:
                 ))
                 raw = (resp.choices[0].message.content or "").strip()
                 if not raw:
-                    print(f"  [html2mcq] \u26a0 ({p_target}) '{model_name}' returned empty response")
+                    print(f"  [html2mcq] ! ({p_target}) '{model_name}' returned empty response")
                     continue
                 return self._parse_response(raw)
             except Exception as e:
                 err_msg = str(e).split('\n')[0][:100]
-                print(f"  [html2mcq] \u26a0 ({p_target}) '{model_name}' failed: {err_msg}")
+                print(f"  [html2mcq] ! ({p_target}) '{model_name}' failed: {err_msg}")
                 continue
 
         return []
@@ -1772,7 +1772,7 @@ class MCQGenerator:
                     batch = self._parse_response(raw)
                 except Exception as e:
                     err_msg = str(e).split('\n')[0][:100]
-                    print(f"  [html2mcq] \u26a0 ({p_target}) '{model_name}' failed: {err_msg}")
+                    print(f"  [html2mcq] ! ({p_target}) '{model_name}' failed: {err_msg}")
                     continue
                 if batch:
                     all_questions.extend(batch)
@@ -1839,7 +1839,7 @@ class MCQGenerator:
                 res = _parse_operator_model(self.mcq_model, self.provider, self.available_keys)
                 p_display, m_display = res if res else (self.provider, self.mcq_model)
                 err_msg = str(e).split('\n')[0][:100]
-                print(f"  [html2mcq] \u26a0 ({p_display}) '{m_display}' failed: {err_msg}")
+                print(f"  [html2mcq] ! ({p_display}) '{m_display}' failed: {err_msg}")
                 break
 
             all_questions.extend(batch_questions)
@@ -2121,7 +2121,7 @@ class AsyncMCQGenerator(MCQGenerator):
                         break
                 except Exception as e:
                     err_msg = str(e).split('\n')[0][:100]
-                    print(f"  [html2mcq] \u26a0 ({p_target}) '{model_name}' failed: {err_msg}")
+                    print(f"  [html2mcq] ! ({p_target}) '{model_name}' failed: {err_msg}")
                     continue
         else:
             while remaining > 0:
@@ -2146,7 +2146,7 @@ class AsyncMCQGenerator(MCQGenerator):
                     res = _parse_operator_model(self.mcq_model, self.provider, self.available_keys)
                     p_display, m_display = res if res else (self.provider, self.mcq_model)
                     err_msg = str(e).split('\n')[0][:100]
-                    print(f"  [html2mcq] \u26a0 ({p_display}) '{m_display}' failed: {err_msg}")
+                    print(f"  [html2mcq] ! ({p_display}) '{m_display}' failed: {err_msg}")
                     break
 
         return self._build_mcq_set(all_questions, n, page_title, source_url, blocks)
