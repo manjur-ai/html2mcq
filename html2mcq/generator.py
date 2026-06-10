@@ -728,7 +728,7 @@ class MCQGenerator:
         # PRIORITY: ocr_model (if AI) > mcq_model (if not auto) > default
         _DEFAULT_VISION = "google/gemini-2.5-flash-lite"
         
-        if ocr_model and ocr_model != "pytesseract":
+        if ocr_model and ocr_model not in ("pytesseract", "priority_list"):
             _vision_model = ocr_model
         elif self.mcq_model and self.mcq_model not in ("priority_list", ""):
             _vision_model = self.mcq_model
