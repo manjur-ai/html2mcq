@@ -1,3 +1,9 @@
+## [3.1.0] - 2026-06-10
+### Added
+- **Operator Auto-Detection**: Use `--operator auto` to scan environment variables and dynamically route requests across multiple AI providers (OpenAI, Gemini, Groq, etc.) based on available keys.
+- **Independent Provider Routing**: `ocr_model` and `mcq_model` can now use separate AI providers in the same run via the `(provider)/model_id` syntax.
+- **ManualAI Provider**: Added support for generic OpenAI-compatible APIs via the `manualai` provider and `MANUALAI_BASE_URL`.
+
 ## [3.0.0] - 2026-06-10
 ### Added
 - **Native Async Support**: New `AsyncMCQGenerator` class for non-blocking usage.

@@ -243,7 +243,7 @@ If you set `mcq_model="priority_list"` or `ocr_model="priority_list"`, the tool 
 
 | Parameter | Default | Description |
 |:---|:---|:---|
-| `provider` | `"openrouter"` | AI provider (see list above) |
+| `provider` | `"openrouter"` | AI provider (see list). Use `"auto"` for multi-provider routing. |
 | `api_key` | `None` | API key (falls back to ENV vars) |
 | `method` | `""` | **Mandatory**: `"auto"` \| `"onestep"` \| `"twostep"` \| `"tesseract"` |
 | `mcq_model` | `""` | Model for MCQ generation. Falls back to `ocr_model` |
@@ -330,6 +330,29 @@ When you use `method="onestep"` for a website, the tool doesn't just read the te
 # Hybrid Mode: AI sees the text AND the diagrams at once
 gen = MCQGenerator(method="onestep", ocr_model="google/gemini-2.0-flash")
 mcq = gen.from_url("https://example.com/physics-lesson")
+```
+
+---
+
+## Operator Auto-Detection (`--operator auto`)
+
+The tool can automatically detect which AI providers you have set up by scanning your environment variables (`OPENAI_API_KEY`, `GEMINI_API_KEY`, etc.).
+
+When you use `provider="auto"` (or `--operator auto`) alongside `priority_list` for your models, the tool becomes **Resilient Across Providers**. It will intelligently skip providers where keys are missing and only attempt calls on valid ones.
+
+```bash
+# Example: Use all your available keys to ensure the quiz is generated!
+html2mcq tutorial.html --method auto --operator auto --mcq-model priority_list
+```
+
+### Independent Provider Routing
+You can even use completely different AI providers for reading (OCR) and writing (MCQ) in the same run!
+
+```bash
+# Gemini reads the image, OpenAI writes the quiz.
+html2mcq img.png --method auto --operator auto \
+  --ocr-model "(gemini)/gemini-2.5-flash" \
+  --mcq-model "(openai)/gpt-4o"
 ```
 
 ---

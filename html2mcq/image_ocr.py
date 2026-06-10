@@ -77,31 +77,51 @@ _FREE_VISION_MODEL = "google/gemma-3-12b-it"
 # Override via ocr_models parameter or HTML2MCQ_OCR_MODELS env var (comma-separated).
 _DEFAULT_OCR_PRIORITY = [
     "(gemini)/gemini-2.5-flash-lite",
+    "(openai)/gpt-4o-mini",
+    "(groq)/llama-3.2-90b-vision-preview",
+    "(deepseek)/deepseek-vl2",
     "(openrouter)/google/gemini-2.5-flash-lite",
+    "(openrouter)/openai/gpt-4o-mini",
     "(openrouter)/google/gemma-3-27b-it",
-    "(openrouter)/google/gemma-3-12b-it",
-    "(openai)/gpt-4o",
 ]
 _OCR_MODELS_ENV_VAR = "HTML2MCQ_OCR_MODELS"
 
-def parse_operator_model(model_str: str, current_provider: str) -> Optional[str]:
+def parse_operator_model(model_str: str, current_provider: str, available_keys: Optional[dict] = None) -> Optional[Tuple[str, str]]:
     """
     Resolve a model string that may have an operator prefix like '(openai)/gpt-4o'.
-    If a prefix is present and matches current_provider, returns the model_id.
-    If a prefix is present and DOES NOT match, returns None.
-    If no prefix is present, returns model_str (universal fallback).
+    Returns (provider, model_id) or None.
     """
     if not model_str:
         return None
+    
     if model_str.startswith("("):
         match = re.match(r"^\(([^)]+)\)/(.*)$", model_str)
         if match:
             provider_prefix, actual_model = match.groups()
-            if provider_prefix.lower() == current_provider.lower():
-                return actual_model
-            else:
+            p_low = provider_prefix.lower()
+            
+            if current_provider == "auto":
+                if available_keys and p_low in available_keys:
+                    return (p_low, actual_model)
                 return None
-    return model_str
+            
+            if p_low == current_provider.lower():
+                return (p_low, actual_model)
+            return None
+
+    # No prefix: universal fallback
+    if current_provider == "auto":
+        # In auto mode, we need a default provider for non-prefixed models.
+        # We'll use the first available key or openrouter.
+        if available_keys:
+            # Prefer openrouter or openai if available
+            for preferred in ["openrouter", "openai", "gemini"]:
+                if preferred in available_keys:
+                    return (preferred, model_str)
+            return (next(iter(available_keys)), model_str)
+        return ("openrouter", model_str)
+        
+    return (current_provider, model_str)
 
 
 def _ocr_vision_api(
@@ -302,6 +322,7 @@ class ImageOCRExtractor:
         vision_api_key: str = "",
         ocr_fallback: bool = True,
         ocr_models: Optional[List[str]] = None,
+        available_keys: Optional[dict] = None,
     ):
         """
         Parameters
@@ -341,6 +362,7 @@ class ImageOCRExtractor:
         self.vision_free_model = vision_free_model
         self.vision_api_key = vision_api_key or os.environ.get("OPENROUTER_API_KEY", "")
         self.ocr_fallback = ocr_fallback
+        self.available_keys = available_keys or {}
 
         # Parse the priority-ordered model list for "priority_list" backend
         self.ocr_models = self._resolve_ocr_models(ocr_models)
@@ -475,39 +497,37 @@ class ImageOCRExtractor:
         elif self.backend == "pytesseract":
             return _ocr_pytesseract(image_bytes, lang=self.lang)
         else:
-            # Treat backend as a direct model name
+            # Resolve operator-aware model
+            res = parse_operator_model(self.backend, self.vision_provider, self.available_keys)
+            if not res:
+                # If model is invalid for this configuration, try fallback list
+                return self._ocr_auto([image_bytes])
+            
+            p_target, current_model = res
+            p_key = self.available_keys.get(p_target, "") if self.vision_provider == "auto" else self.vision_api_key
+
             try:
                 result = _ocr_vision_api(
                     [image_bytes],
-                    model=self.backend,
-                    api_key=self.vision_api_key,
-                    provider=self.vision_provider,
+                    model=current_model,
+                    api_key=p_key,
+                    provider=p_target,
                 )
                 if result.strip():
                     return result
             except Exception as e:
-                err_msg = str(e)
-                no_balance = any(
-                    kw in err_msg.lower()
-                    for kw in ("insufficient", "balance", "quota", "credits", "402", "payment")
-                )
-                if no_balance:
-                    print(f"  [html2mcq] ⚠ {self.backend}: insufficient balance")
-                else:
-                    print(f"  [html2mcq] ⚠ {self.backend} failed: {err_msg[:120]}")
+                print(f"  [html2mcq] ⚠ ({p_target}) {current_model} failed: {str(e)[:120]}")
+
             # Fall back to auto, skipping the failed model to avoid retrying
             fallback = [m for m in self.ocr_models if m != self.backend]
             if fallback:
-                print(f"  [html2mcq] → falling back to auto (skipping {self.backend})")
+                print(f"  [html2mcq] → falling back to priority_list (skipping {self.backend})")
                 return self._ocr_auto([image_bytes], models=fallback)
             return ""
 
     def ocr_image_bytes(self, image_bytes_list: List[bytes]) -> str:
         """
         OCR one or more images from raw PNG bytes (for scanned PDF pipeline).
-
-        All images are sent together in one API call (multi-image vision) to
-        avoid duplicate content across pages.
         """
         if not image_bytes_list:
             return ""
@@ -518,30 +538,30 @@ class ImageOCRExtractor:
             texts = [_ocr_pytesseract(img, lang=self.lang) for img in image_bytes_list]
             return "\n\n".join(t for t in texts if t.strip())
         else:
-            # Treat backend as a direct model name
+            # Resolve operator-aware model
+            res = parse_operator_model(self.backend, self.vision_provider, self.available_keys)
+            if not res:
+                return self._ocr_auto(image_bytes_list)
+                
+            p_target, current_model = res
+            p_key = self.available_keys.get(p_target, "") if self.vision_provider == "auto" else self.vision_api_key
+
             try:
                 result = _ocr_vision_api(
                     image_bytes_list,
-                    model=self.backend,
-                    api_key=self.vision_api_key,
-                    provider=self.vision_provider,
+                    model=current_model,
+                    api_key=p_key,
+                    provider=p_target,
                 )
                 if result.strip():
                     return result
             except Exception as e:
-                err_msg = str(e)
-                no_balance = any(
-                    kw in err_msg.lower()
-                    for kw in ("insufficient", "balance", "quota", "credits", "402", "payment")
-                )
-                if no_balance:
-                    print(f"  [html2mcq] ⚠ {self.backend}: insufficient balance")
-                else:
-                    print(f"  [html2mcq] ⚠ {self.backend} failed: {err_msg[:120]}")
+                print(f"  [html2mcq] ⚠ ({p_target}) {current_model} failed: {str(e)[:120]}")
+
             # Fall back to auto, skipping the failed model to avoid retrying
             fallback = [m for m in self.ocr_models if m != self.backend]
             if fallback:
-                print(f"  [html2mcq] → falling back to auto (skipping {self.backend})")
+                print(f"  [html2mcq] → falling back to priority_list (skipping {self.backend})")
                 return self._ocr_auto(image_bytes_list, models=fallback)
             return ""
 
@@ -557,17 +577,25 @@ class ImageOCRExtractor:
                    models: Optional[List[str]] = None) -> str:
         """Try each model in *models* (or self.ocr_models) priority order until one succeeds."""
         for model in models or self.ocr_models:
-            current_model = parse_operator_model(model, self.vision_provider)
-            if not current_model:
+            res = parse_operator_model(model, self.vision_provider, self.available_keys)
+            if not res:
                 continue
+            
+            p_target, current_model = res
+            
+            # Determine API key for this specific model call
+            if self.vision_provider == "auto":
+                p_key = self.available_keys.get(p_target, "")
+            else:
+                p_key = self.vision_api_key
 
             try:
                 result = _ocr_vision_api(
                     image_bytes_list, model=current_model,
-                    api_key=self.vision_api_key, provider=self.vision_provider,
+                    api_key=p_key, provider=p_target,
                 )
                 if result:
-                    print(f"  [html2mcq] ✓ {current_model}: {len(result)} chars")
+                    print(f"  [html2mcq] ✓ ({p_target}) {current_model}: {len(result)} chars")
                     return result
             except Exception as e:
                 err_msg = str(e)
@@ -576,8 +604,8 @@ class ImageOCRExtractor:
                     for kw in ("insufficient", "balance", "quota", "credits", "402", "payment")
                 )
                 if no_balance:
-                    print(f"  [html2mcq] ⚠ {current_model}: insufficient balance")
+                    print(f"  [html2mcq] ⚠ ({p_target}) {current_model}: insufficient balance")
                 else:
-                    print(f"  [html2mcq] ⚠ {current_model} failed: {err_msg[:120]}")
+                    print(f"  [html2mcq] ⚠ ({p_target}) {current_model} failed: {err_msg[:120]}")
                 continue
         return ""

@@ -359,6 +359,7 @@ class PDFExtractor:
         ocr_fallback: bool = True,
         ocr_lang: str = "eng",
         ocr_models: Optional[List[str]] = None,
+        available_keys: Optional[dict] = None,
     ):
         """
         Parameters
@@ -389,6 +390,8 @@ class PDFExtractor:
             If True (default), fall back to Tesseract OCR when vision API fails.
         ocr_lang : str
             Tesseract language code for pytesseract fallback.
+        available_keys : dict, optional
+            Map of provider -> key for 'auto' provider mode.
         """
         self.backend = backend.lower()
         self.chunk_size = chunk_size
@@ -406,6 +409,7 @@ class PDFExtractor:
         self.vision_api_key = vision_api_key or os.environ.get("OPENROUTER_API_KEY", "")
         self.ocr_fallback = ocr_fallback
         self.ocr_lang = ocr_lang
+        self.available_keys = available_keys or {}
 
         # Initialise primary backend eagerly (validates deps)
         self._primary = self._make_backend(self.backend)
@@ -772,17 +776,25 @@ class PDFExtractor:
         from .image_ocr import _ocr_vision_api, _ocr_pytesseract, parse_operator_model
 
         for model in models or self._ocr_models:
-            current_model = parse_operator_model(model, self.vision_provider)
-            if not current_model:
+            res = parse_operator_model(model, self.vision_provider, self.available_keys)
+            if not res:
                 continue
+            
+            p_target, current_model = res
+            
+            # Determine API key for this specific model call
+            if self.vision_provider == "auto":
+                p_key = self.available_keys.get(p_target, "")
+            else:
+                p_key = self.vision_api_key
 
             try:
                 result = _ocr_vision_api(
                     pngs, model=current_model,
-                    api_key=self.vision_api_key, provider=self.vision_provider,
+                    api_key=p_key, provider=p_target,
                 )
                 if result:
-                    print(f"  [html2mcq] ✓ {current_model}: {len(result)} chars")
+                    print(f"  [html2mcq] ✓ ({p_target}) {current_model}: {len(result)} chars")
                     return result
             except Exception as e:
                 err_msg = str(e)
@@ -791,9 +803,9 @@ class PDFExtractor:
                     for kw in ("insufficient", "balance", "quota", "credits", "402", "payment")
                 )
                 if no_balance:
-                    print(f"  [html2mcq] ⚠ {current_model}: insufficient balance")
+                    print(f"  [html2mcq] ⚠ ({p_target}) {current_model}: insufficient balance")
                 else:
-                    print(f"  [html2mcq] ⚠ {current_model} failed: {err_msg[:120]}")
+                    print(f"  [html2mcq] ⚠ ({p_target}) {current_model} failed: {err_msg[:120]}")
                 continue
         return ""
 

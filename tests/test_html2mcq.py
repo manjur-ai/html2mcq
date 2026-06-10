@@ -1699,3 +1699,103 @@ class TestEnvHelpers:
         gen = MCQGenerator(provider="manualai", method="tesseract", mcq_model="my-model")
         assert gen.ENV_KEYS["manualai"] == "MANUALAI_API_KEY"
         assert gen._resolved_api_key == "sk-manual"
+
+
+# ── Operator Auto-Detection ──────────────────────────────────────────────────
+
+class TestOperatorAuto:
+    def test_auto_provider_detects_keys(self, monkeypatch):
+        from html2mcq.generator import MCQGenerator
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-openai")
+        monkeypatch.setenv("GEMINI_API_KEY", "sk-gemini")
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+        gen = MCQGenerator(provider="auto", operator="auto", method="auto", mcq_model="priority_list")
+        assert "openai" in gen.available_keys
+        assert "gemini" in gen.available_keys
+        assert "openrouter" not in gen.available_keys
+        assert gen.available_keys["openai"] == "sk-openai"
+
+    def test_auto_provider_no_keys_raises(self, monkeypatch):
+        from html2mcq.generator import MCQGenerator
+        import os
+        # Truly empty keys list to bypass the 'ollama' always-on logic
+        monkeypatch.setattr(MCQGenerator, "ENV_KEYS", {})
+        
+        with pytest.raises(ValueError, match="no valid API keys found"):
+            MCQGenerator(provider="auto", operator="auto", method="auto", mcq_model="priority_list")
+
+    def test_auto_provider_requires_priority_list(self, monkeypatch):
+        from html2mcq.generator import MCQGenerator
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-openai")
+        with pytest.raises(ValueError, match="only allowed when 'ocr_model=\"priority_list\"'"):
+            MCQGenerator(provider="auto", operator="auto", method="auto", mcq_model="gpt-4o")
+
+    def test_auto_provider_dynamic_backend_switching(self, monkeypatch):
+        from html2mcq.generator import MCQGenerator
+        from html2mcq.models import ContentBlock
+        from unittest.mock import MagicMock, patch
+
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-openai")
+        monkeypatch.setenv("GEMINI_API_KEY", "sk-gemini")
+
+        # Custom priority list: first model (gemini) fails, second (openai) succeeds
+        custom_list = "(gemini)/fail-model,(openai)/success-model"
+        monkeypatch.setenv("HTML2MCQ_MCQ_MODELS", custom_list)
+
+        gen = MCQGenerator(provider="auto", operator="auto", method="auto", mcq_model="priority_list")
+        
+        with patch("html2mcq.generator._make_backend") as mock_make:
+            mock_gemini = MagicMock()
+            mock_gemini.complete.side_effect = Exception("Gemini Down")
+            
+            mock_openai = MagicMock()
+            mock_openai.complete.return_value = '[{"question": "Q1", "options": ["A","B"], "answers": [0]}]'
+            
+            def side_effect(p, key, model, **kwargs):
+                if p == "gemini": return mock_gemini
+                if p == "openai": return mock_openai
+                return MagicMock()
+            
+            mock_make.side_effect = side_effect
+
+            blocks = [ContentBlock(type="text", content="Test content")]
+            qs, _ = gen._generate(blocks, n=1, page_title="Title", source_url=None, 
+                                  difficulty_mix=None, focus_topics=None)
+
+            assert len(qs) == 1
+            assert qs[0].question_html == "Q1"
+            assert mock_gemini.complete.called
+            assert mock_openai.complete.called
+
+    def test_auto_provider_skips_missing_keys(self, monkeypatch):
+        from html2mcq.generator import MCQGenerator
+        from html2mcq.models import ContentBlock
+        from unittest.mock import MagicMock, patch
+
+        # Only OpenAI key is present
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-openai")
+        # Ensure others are empty
+        for provider, env_var in MCQGenerator.ENV_KEYS.items():
+            if env_var and env_var != "OPENAI_API_KEY":
+                monkeypatch.setenv(env_var, "")
+
+        custom_list = "(gemini)/gemini-model,(openai)/gpt-model"
+        monkeypatch.setenv("HTML2MCQ_MCQ_MODELS", custom_list)
+
+        gen = MCQGenerator(provider="auto", operator="auto", method="auto", mcq_model="priority_list")
+        
+        with patch("html2mcq.generator._make_backend") as mock_make:
+            mock_openai = MagicMock()
+            mock_openai.complete.return_value = '[{"question_html": "Q1", "options": ["A","B","C","D"], "answers": [0]}]'
+            mock_make.return_value = mock_openai
+
+            blocks = [ContentBlock(type="text", content="Test content")]
+            gen._generate(blocks, n=1, page_title="Title", source_url=None, 
+                          difficulty_mix=None, focus_topics=None)
+
+            # Should ONLY have called _make_backend for openai
+            # Because gemini was skipped due to missing key
+            calls = [call[0][0] for call in mock_make.call_args_list]
+            assert "gemini" not in calls
+            assert "openai" in calls

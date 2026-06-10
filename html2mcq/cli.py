@@ -112,9 +112,9 @@ def main():
 
     # AI provider
     ai_group = parser.add_argument_group("AI provider")
-    ai_group.add_argument("--provider", default="openrouter",
-                          choices=["anthropic", "openai", "openrouter", "gemini", "deepseek", "groq", "manualai", "ollama"],
-                          help="AI provider (default: openrouter). Use 'ollama' for local LLM.")
+    ai_group.add_argument("--provider", "--operator", default="openrouter",
+                          choices=["anthropic", "openai", "openrouter", "gemini", "deepseek", "groq", "manualai", "ollama", "auto"],
+                          help="AI provider (default: openrouter). Use 'auto' to automatically detect available API keys.")
     ai_group.add_argument("--mcq-model", default="",
                           help="MCQ generation model (or 'priority_list' to try --mcq-models)")
     ai_group.add_argument("--mcq-models", default="",
