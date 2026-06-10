@@ -269,7 +269,7 @@ def _ocr_vision_with_fallback(
                 print(f"  [html2mcq] ✓ pytesseract fallback: {sum(len(t) for t in texts)} chars")
                 return "\n\n".join(texts)
         except Exception as e:
-            print(f"  [html2mcq] ⚠ pytesseract fallback failed: {str(e)[:120]}")
+            print(f"  [html2mcq] ! pytesseract fallback failed: {str(e)[:120]}")
 
     return ""
 
@@ -522,7 +522,7 @@ class ImageOCRExtractor:
                 if result.strip():
                     return result
             except Exception as e:
-                print(f"  [html2mcq] ⚠ ({p_target}) {current_model} failed: {str(e)[:120]}")
+                print(f"  [html2mcq] ! ({p_target}) {current_model} failed: {str(e)[:120]}")
 
             # Fall back to auto, skipping the failed model to avoid retrying
             fallback = [m for m in self.ocr_models if m != self.backend]
@@ -562,7 +562,7 @@ class ImageOCRExtractor:
                 if result.strip():
                     return result
             except Exception as e:
-                print(f"  [html2mcq] ⚠ ({p_target}) {current_model} failed: {str(e)[:120]}")
+                print(f"  [html2mcq] ! ({p_target}) {current_model} failed: {str(e)[:120]}")
 
             # Fall back to auto, skipping the failed model to avoid retrying
             fallback = [m for m in self.ocr_models if m != self.backend]

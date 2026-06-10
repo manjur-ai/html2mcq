@@ -33,7 +33,7 @@ def _retry_with_backoff(func, max_retries=3, initial_delay=1, factor=2, jitter=0
             
             # Wait with jitter
             sleep_time = delay * (1 + jitter * random.random())
-            print(f"  [html2mcq] ⚠ Rate limited or overloaded. Retrying in {sleep_time:.1f}s... (Attempt {i+1}/{max_retries})")
+            print(f"  [html2mcq] ! Rate limited or overloaded. Retrying in {sleep_time:.1f}s... (Attempt {i+1}/{max_retries})")
             time.sleep(sleep_time)
             delay *= factor
     raise last_err
@@ -731,7 +731,7 @@ class MCQGenerator:
         # For vision-based tasks (onestep, twostep OCR, scanned PDFs),
         # determine the primary vision model.
         # PRIORITY: ocr_model (if AI) > mcq_model (if not auto) > default
-        _DEFAULT_VISION = "google/gemini-2.5-flash-lite"
+        _DEFAULT_VISION = "(gemini)/gemini-2.5-flash-lite"
         
         if ocr_model and ocr_model not in ("pytesseract", "priority_list"):
             _vision_model = ocr_model
@@ -739,7 +739,7 @@ class MCQGenerator:
             _vision_model = self.mcq_model
         else:
             _vision_model = _DEFAULT_VISION
-        _vision_free_model = "google/gemma-3-12b-it"
+        _vision_free_model = "(openrouter)/google/gemma-4-26b-a4b-it:free"
 
         # Image OCR / vision (for method="twostep")
         self.image_ocr_extractor = ImageOCRExtractor(
@@ -1283,48 +1283,19 @@ class MCQGenerator:
         focus_topics: Optional[List[str]] = None,
         custom_instructions: Optional[str] = None,
     ) -> List[MCQQuestion]:
-        """Send images directly to vision model and parse MCQ JSON response."""
+        """Send images directly to vision model and parse MCQ JSON response.
+        Tries self.image_ocr_extractor.vision_model first, then falls back
+        through self.image_ocr_extractor.ocr_models priority list.
+        """
         import urllib.request
         import urllib.error
-
-        # ── Resolve Provider and Model ──────────────────────────────────
-        vis_model_raw = self.image_ocr_extractor.vision_model
-        res = _parse_operator_model(vis_model_raw, self.provider, self.available_keys)
-        if not res:
-            return []
-        p_target, model_name = res
-        
-        # Determine API key and base URL
-        if self.provider == "auto":
-            p_key = self.available_keys.get(p_target, "")
-        else:
-            p_key = self.image_ocr_extractor.vision_api_key
-
-        if not p_key and p_target != "ollama":
-            return []
 
         try:
             import openai
         except ImportError:
             return []
 
-        # Provider base URLs
-        base_urls = {
-            "openrouter": "https://openrouter.ai/api/v1",
-            "openai": os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
-            "ollama": getattr(self.backend, "ollama_base_url", "http://localhost:11434/v1"),
-            "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
-            "deepseek": "https://api.deepseek.com",
-            "groq": "https://api.groq.com/openai/v1",
-            "manualai": os.environ.get("MANUALAI_BASE_URL", ""),
-        }
-        
-        client = openai.OpenAI(
-            api_key=p_key,
-            base_url=base_urls.get(p_target),
-        )
-
-        # Download images
+        # ── Download images (reused across all model attempts) ──────────
         image_data: List[bytes] = []
         for block in img_blocks:
             try:
@@ -1336,7 +1307,7 @@ class MCQGenerator:
         if not image_data:
             return []
 
-        # Build content: text instruction + all images
+        # ── Build content: text instruction + all images ────────────────
         instr_parts = [f"Generate {n} MCQ questions from the content in these images."]
         if page_title:
             instr_parts.insert(0, f"PAGE TITLE: {page_title}")
@@ -1364,26 +1335,65 @@ class MCQGenerator:
                 "image_url": {"url": f"data:image/png;base64,{b64}"},
             })
 
+        # ── Build model candidate list: primary first, then fallbacks ───
+        primary_raw = self.image_ocr_extractor.vision_model
+        fallback_raws = self.image_ocr_extractor.ocr_models or []
+        model_candidates = [primary_raw] + [m for m in fallback_raws if m != primary_raw]
+
+        # Provider base URLs
+        base_urls = {
+            "openrouter": "https://openrouter.ai/api/v1",
+            "openai": os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+            "ollama": getattr(self.backend, "ollama_base_url", "http://localhost:11434/v1"),
+            "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
+            "deepseek": "https://api.deepseek.com",
+            "groq": "https://api.groq.com/openai/v1",
+            "manualai": os.environ.get("MANUALAI_BASE_URL", ""),
+        }
+
         self._log_prompt("VISION INSTRUCTION",
-                          f"Model: {self.image_ocr_extractor.vision_model}\n"
+                          f"Model candidates: {model_candidates}\n"
                           f"Images: {len(image_data)}\n"
                           f"Instruction: {content[0]['text']}")
 
-        try:
-            resp = _retry_with_backoff(lambda: client.chat.completions.create(
-                model=model_name,
-                messages=[{"role": "user", "content": content}],
-                max_tokens=self.max_tokens,
-            ))
-            raw = (resp.choices[0].message.content or "").strip()
-            if not raw:
-                print(f"  [html2mcq] \u26a0 ({p_target}) '{model_name}' returned empty response")
-                return []
-            return self._parse_response(raw)
-        except Exception as e:
-            err_msg = str(e).split('\n')[0][:100]
-            print(f"  [html2mcq] \u26a0 ({p_target}) '{model_name}' failed: {err_msg}")
-            return []
+        # ── Try each model in priority order until one succeeds ─────────
+        for raw_model in model_candidates:
+            res = _parse_operator_model(raw_model, self.provider, self.available_keys)
+            if not res:
+                continue
+            p_target, model_name = res
+
+            # Determine API key
+            if self.provider == "auto":
+                p_key = self.available_keys.get(p_target, "")
+            else:
+                p_key = self.image_ocr_extractor.vision_api_key
+
+            if not p_key and p_target != "ollama":
+                continue
+
+            client = openai.OpenAI(
+                api_key=p_key,
+                base_url=base_urls.get(p_target),
+            )
+
+            try:
+                resp = _retry_with_backoff(lambda: client.chat.completions.create(
+                    model=model_name,
+                    messages=[{"role": "user", "content": content}],
+                    max_tokens=self.max_tokens,
+                ))
+                raw = (resp.choices[0].message.content or "").strip()
+                if not raw:
+                    print(f"  [html2mcq] \u26a0 ({p_target}) '{model_name}' returned empty response")
+                    continue
+                return self._parse_response(raw)
+            except Exception as e:
+                err_msg = str(e).split('\n')[0][:100]
+                print(f"  [html2mcq] \u26a0 ({p_target}) '{model_name}' failed: {err_msg}")
+                continue
+
+        return []
 
     def _vision_mcq_pdf(
         self, pngs: Optional[List[bytes]] = None, n: int = 1, page_title: str = "",
@@ -1392,44 +1402,19 @@ class MCQGenerator:
         custom_instructions: Optional[str] = None,
         pdf_bytes: Optional[bytes] = None,
     ) -> List[MCQQuestion]:
-        """Send PDF data (either as PNGs or native PDF bytes) to a vision model."""
-        # ── Resolve Provider and Model ──────────────────────────────────
-        vis_model_raw = self.image_ocr_extractor.vision_model
-        res = _parse_operator_model(vis_model_raw, self.provider, self.available_keys)
-        if not res:
-            return []
-        p_target, model_name = res
-        
-        # Determine API key and base URL
-        if self.provider == "auto":
-            p_key = self.available_keys.get(p_target, "")
-        else:
-            p_key = self.image_ocr_extractor.vision_api_key
-
-        if not p_key and p_target != "ollama":
-            return []
-
+        """Send PDF data (either as PNGs or native PDF bytes) to a vision model.
+        Tries self.image_ocr_extractor.vision_model first, then falls back
+        through self.image_ocr_extractor.ocr_models priority list.
+        """
         try:
             import openai
         except ImportError:
             return []
 
-        # Provider base URLs
-        base_urls = {
-            "openrouter": "https://openrouter.ai/api/v1",
-            "openai": os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
-            "ollama": getattr(self.backend, "ollama_base_url", "http://localhost:11434/v1") if self.backend else "http://localhost:11434/v1",
-            "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
-            "deepseek": "https://api.deepseek.com",
-            "groq": "https://api.groq.com/openai/v1",
-            "manualai": os.environ.get("MANUALAI_BASE_URL", ""),
-        }
+        if not pngs and not pdf_bytes:
+            return []
 
-        client = openai.OpenAI(
-            api_key=p_key,
-            base_url=base_urls.get(p_target),
-        )
-
+        # ── Build instruction text (common) ─────────────────────────────
         instr_parts = [f"Generate {n} MCQ questions based on the content in these PDF pages."]
         if page_title:
             instr_parts.insert(0, f"PAGE TITLE: {page_title}")
@@ -1449,52 +1434,88 @@ class MCQGenerator:
             '"answers": [0], "difficulty": "easy|medium|hard", '
             '"explanation": "..."}'
         )
-        
-        # ── Build Multi-modal Content ──
-        content: list = [{"type": "text", "text": "\n".join(instr_parts)}]
-        
-        # Try native PDF first for Gemini/OpenRouter if bytes are available
-        use_native = pdf_bytes and self.provider in ("gemini", "openrouter")
-        
-        if use_native:
-            b64_pdf = _base64.b64encode(pdf_bytes).decode("utf-8")
-            # Google/OpenRouter convention for PDF in OpenAI-compatible SDK
-            content.append({
-                "type": "image_url", # Some SDKs use generic type but this often works for blobs
-                "image_url": {"url": f"data:application/pdf;base64,{b64_pdf}"},
-            })
-            log_desc = f"Native PDF ({len(pdf_bytes)} bytes)"
-        elif pngs:
-            for png in pngs:
-                b64 = _base64.b64encode(png).decode("utf-8")
+        instruction_text = "\n".join(instr_parts)
+
+        # ── Build model candidate list: primary first, then fallbacks ───
+        primary_raw = self.image_ocr_extractor.vision_model
+        fallback_raws = self.image_ocr_extractor.ocr_models or []
+        model_candidates = [primary_raw] + [m for m in fallback_raws if m != primary_raw]
+
+        # Provider base URLs
+        base_urls = {
+            "openrouter": "https://openrouter.ai/api/v1",
+            "openai": os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+            "ollama": getattr(self.backend, "ollama_base_url", "http://localhost:11434/v1") if self.backend else "http://localhost:11434/v1",
+            "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
+            "deepseek": "https://api.deepseek.com",
+            "groq": "https://api.groq.com/openai/v1",
+            "manualai": os.environ.get("MANUALAI_BASE_URL", ""),
+        }
+
+        # ── Try each model in priority order until one succeeds ─────────
+        for raw_model in model_candidates:
+            res = _parse_operator_model(raw_model, self.provider, self.available_keys)
+            if not res:
+                continue
+            p_target, model_name = res
+
+            # Determine API key
+            if self.provider == "auto":
+                p_key = self.available_keys.get(p_target, "")
+            else:
+                p_key = self.image_ocr_extractor.vision_api_key
+
+            if not p_key and p_target != "ollama":
+                continue
+
+            client = openai.OpenAI(
+                api_key=p_key,
+                base_url=base_urls.get(p_target),
+            )
+
+            # Build content for this provider: native PDF if compatible, else PNGs
+            content: list = [{"type": "text", "text": instruction_text}]
+            use_native = pdf_bytes and p_target in ("gemini", "openrouter")
+            if use_native:
+                b64_pdf = _base64.b64encode(pdf_bytes).decode("utf-8")
                 content.append({
                     "type": "image_url",
-                    "image_url": {"url": f"data:image/png;base64,{b64}"},
+                    "image_url": {"url": f"data:application/pdf;base64,{b64_pdf}"},
                 })
-            log_desc = f"{len(pngs)} rendered pages"
-        else:
-            return []
+                log_desc = f"Native PDF ({len(pdf_bytes)} bytes)"
+            elif pngs:
+                for png in pngs:
+                    b64 = _base64.b64encode(png).decode("utf-8")
+                    content.append({
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{b64}"},
+                    })
+                log_desc = f"{len(pngs)} rendered pages"
+            else:
+                continue
 
-        self._log_prompt("VISION INSTRUCTION",
-                          f"Model: {self.image_ocr_extractor.vision_model}\n"
-                          f"Data: {log_desc}\n"
-                          f"Instruction: {content[0]['text']}")
+            self._log_prompt("VISION INSTRUCTION",
+                              f"Model: {raw_model}\n"
+                              f"Data: {log_desc}\n"
+                              f"Instruction: {instruction_text}")
 
-        try:
-            resp = _retry_with_backoff(lambda: client.chat.completions.create(
-                model=model_name,
-                messages=[{"role": "user", "content": content}],
-                max_tokens=self.max_tokens,
-            ))
-            raw = (resp.choices[0].message.content or "").strip()
-            if not raw:
-                print(f"  [html2mcq] \u26a0 ({p_target}) '{model_name}' returned empty response")
-                return []
-            return self._parse_response(raw)
-        except Exception as e:
-            err_msg = str(e).split('\n')[0][:100]
-            print(f"  [html2mcq] \u26a0 ({p_target}) '{model_name}' failed: {err_msg}")
-            return []
+            try:
+                resp = _retry_with_backoff(lambda: client.chat.completions.create(
+                    model=model_name,
+                    messages=[{"role": "user", "content": content}],
+                    max_tokens=self.max_tokens,
+                ))
+                raw = (resp.choices[0].message.content or "").strip()
+                if not raw:
+                    print(f"  [html2mcq] \u26a0 ({p_target}) '{model_name}' returned empty response")
+                    continue
+                return self._parse_response(raw)
+            except Exception as e:
+                err_msg = str(e).split('\n')[0][:100]
+                print(f"  [html2mcq] \u26a0 ({p_target}) '{model_name}' failed: {err_msg}")
+                continue
+
+        return []
 
     def _image_twostep(
         self,
@@ -1857,11 +1878,22 @@ class MCQGenerator:
         try:
             data = json.loads(text)
         except json.JSONDecodeError:
-            match = re.search(r"\[.*\]", text, re.DOTALL)
-            if match:
-                data = json.loads(match.group())
+            # Try stripping trailing text (handles "Extra data" after JSON)
+            for i in range(len(text), 0, -1):
+                try:
+                    data = json.loads(text[:i])
+                    break
+                except json.JSONDecodeError:
+                    continue
             else:
-                raise ValueError(f"AI returned non-JSON response:\n{raw[:500]}")
+                match = re.search(r"\[.*\]", text, re.DOTALL)
+                if match:
+                    data = json.loads(match.group())
+                else:
+                    raise ValueError(f"AI returned non-JSON response:\n{raw[:500]}")
+
+        if not isinstance(data, list):
+            raise ValueError(f"AI returned non-array JSON:\n{raw[:500]}")
 
         questions = []
         for item in data:

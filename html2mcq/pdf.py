@@ -446,7 +446,7 @@ class PDFExtractor:
             full_text, pages, backend_used = self._extract_with_fallback(
                 pdf_bytes, source_url, page_numbers=page_numbers)
             if not full_text.strip():
-                print(f"  [html2mcq] ⚠ No text extracted from PDF: {source_url}")
+                print(f"  [html2mcq] ! No text extracted from PDF: {source_url}")
                 return []
             return self._make_blocks(full_text, pages, backend_used, source_url)
 
@@ -467,7 +467,7 @@ class PDFExtractor:
             pdf_bytes, source_url, page_numbers=page_numbers)
 
         if not full_text.strip():
-            print(f"  [html2mcq] ⚠ No text extracted from PDF: {source_url}")
+            print(f"  [html2mcq] ! No text extracted from PDF: {source_url}")
             return []
 
         return self._make_blocks(full_text, pages, backend_used, source_url)
@@ -529,7 +529,7 @@ class PDFExtractor:
                         metadata={"image_data": b64, "source": block.content}
                     ))
             except Exception as e:
-                print(f"  [html2mcq] ⚠ Failed to render PDF {block.content}: {e}")
+                print(f"  [html2mcq] ! Failed to render PDF {block.content}: {e}")
                 result.append(block)
         return result
 
@@ -561,7 +561,7 @@ class PDFExtractor:
                 except Exception as e:
                     # Keep original block on failure
                     enriched.append(block)
-                    print(f"  [html2mcq] ⚠ Could not extract PDF {block.content}: {e}")
+                    print(f"  [html2mcq] ! Could not extract PDF {block.content}: {e}")
             else:
                 enriched.append(block)
         return enriched
@@ -617,7 +617,7 @@ class PDFExtractor:
                     text = ""
 
         if not text.strip():
-            print(f"  [html2mcq] ⚠ No text extracted from scanned PDF: {source_url}")
+            print(f"  [html2mcq] ! No text extracted from scanned PDF: {source_url}")
             return []
 
         backend_name = f"scanned_{self.scanned_backend}"
@@ -871,7 +871,7 @@ class PDFExtractor:
             full_text, pages = self._primary.extract(pdf_bytes, source_url,
                                                      page_numbers=page_numbers)
         except Exception as e:
-            print(f"  [html2mcq] ⚠ {self._primary.name} failed: {e}")
+            print(f"  [html2mcq] ! {self._primary.name} failed: {e}")
             full_text, pages = "", []
 
         return full_text, pages, self._primary.name

@@ -1,3 +1,13 @@
+## [3.3.0] - 2026-06-10
+### Added
+- **Priority list fallback in `_vision_mcq`/`_vision_mcq_pdf`**: Vision methods now iterate through the full `ocr_models` priority list when the primary model fails (previously returned `[]` immediately on non-retryable errors like 402).
+
+### Fixed
+- **`_parse_response` handles trailing text**: Improved JSON parsing to strip trailing characters after valid JSON arrays (fixes "Extra data" `json.JSONDecodeError`). Also validates that the response is a JSON array, rejecting non-array responses with a clear error.
+- **`_DEFAULT_VISION` provider prefix**: Changed from `google/gemini-2.5-flash-lite` to `(gemini)/gemini-2.5-flash-lite` to route directly to Gemini, avoiding unnecessary OpenRouter 402 failures.
+- **Updated `_vision_free_model`**: Changed to `(openrouter)/google/gemma-4-26b-a4b-it:free` for a newer, faster free-tier model.
+- **Windows Unicode compatibility**: Replaced all `\u26a0` (⚠) characters with `!` in print statements across `generator.py`, `image_ocr.py`, and `pdf.py` to fix `UnicodeEncodeError` on CP1252 terminals.
+
 ## [3.2.0] - 2026-06-10
 ### Added
 - **Configurable `max_tokens`**: Now fully propagated to all vision and OCR tasks.
