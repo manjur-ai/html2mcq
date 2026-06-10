@@ -233,10 +233,11 @@ class TestMCQGenerator:
         gen.mcq_model_list = None
         gen.batch_size = 10
         gen.max_tokens = 4096
+        gen.timeout = 30
         gen.extractor = ContentExtractor(min_text_length=10)
         gen.pdf_extractor = PDFExtractor(backend="pymupdf")
         gen.custom_instructions = ""
-        gen.method = "twostep"
+        gen.method = "tesseract"
         mock = MagicMock()
         mock.complete.return_value = MOCK_RESPONSE
         mock.mcq_model = "llama-3.3-70b"
@@ -298,7 +299,7 @@ class TestMCQGenerator:
         old = os.environ.pop("ANTHROPIC_API_KEY", None)
         try:
             with pytest.raises(ValueError, match="API key"):
-                MCQGenerator(api_key=None, provider="anthropic")
+                MCQGenerator(api_key=None, provider="anthropic", method="auto", mcq_model="gpt-4o")
         finally:
             if old:
                 os.environ["ANTHROPIC_API_KEY"] = old
@@ -306,21 +307,19 @@ class TestMCQGenerator:
     def test_unknown_provider_raises(self):
         from html2mcq import MCQGenerator
         with pytest.raises(ValueError, match="Unknown provider"):
-            MCQGenerator(api_key="fake", provider="fakeprovider")
+            MCQGenerator(api_key="fake", provider="fakeprovider", method="auto", mcq_model="gpt-4o")
 
     def test_ocr_model_pytesseract(self):
-        import os
-        from html2mcq import MCQGenerator
-        old = os.environ.pop("ANTHROPIC_API_KEY", None)
-        try:
-            os.environ["ANTHROPIC_API_KEY"] = "sk-fake"
-            gen = MCQGenerator(provider="anthropic", ocr_model="pytesseract")
-            assert gen.image_ocr_extractor.backend == "pytesseract"
-        finally:
-            if old:
-                os.environ["ANTHROPIC_API_KEY"] = old
-            else:
-                os.environ.pop("ANTHROPIC_API_KEY", None)
+        # Passing 'pytesseract' as a model name is now a Logical Error
+        from html2mcq.generator import MCQGenerator
+        with pytest.raises(ValueError, match="Logical Error: 'pytesseract' is an internal engine"):
+             MCQGenerator(provider="anthropic", api_key="sk-fake", ocr_model="pytesseract", method="tesseract", mcq_model="gpt-4o")
+
+    def test_mcq_model_pytesseract(self):
+        # Passing 'pytesseract' as an MCQ model is also a Logical Error
+        from html2mcq.generator import MCQGenerator
+        with pytest.raises(ValueError, match="Logical Error: 'pytesseract' is not an AI model"):
+             MCQGenerator(provider="anthropic", api_key="sk-fake", mcq_model="pytesseract", method="auto")
 
     def test_ocr_model_vision_api(self):
         import os
@@ -328,8 +327,8 @@ class TestMCQGenerator:
         old = os.environ.pop("ANTHROPIC_API_KEY", None)
         try:
             os.environ["ANTHROPIC_API_KEY"] = "sk-fake"
-            gen = MCQGenerator(provider="anthropic", ocr_model="vision_api")
-            assert gen.image_ocr_extractor.backend == "vision_api"
+            gen = MCQGenerator(provider="anthropic", ocr_model="gpt-4o", method="auto")
+            assert gen.image_ocr_extractor.backend == "gpt-4o"
         finally:
             if old:
                 os.environ["ANTHROPIC_API_KEY"] = old
@@ -341,7 +340,7 @@ class TestMCQGenerator:
         import os
         from html2mcq import MCQGenerator
         os.environ["ANTHROPIC_API_KEY"] = "sk-fake"
-        gen = MCQGenerator(provider="anthropic", ocr_model="openai/gpt-4o")
+        gen = MCQGenerator(provider="anthropic", ocr_model="openai/gpt-4o", method="auto")
         assert gen.image_ocr_extractor.backend == "openai/gpt-4o"
         assert gen.pdf_extractor.scanned_backend == "openai/gpt-4o"
 
@@ -615,10 +614,11 @@ class TestMCQGeneratorPDF:
         gen.mcq_model_list = None
         gen.batch_size = 10
         gen.max_tokens = 4096
+        gen.timeout = 30
         gen.extractor = ContentExtractor(min_text_length=10)
         gen.pdf_extractor = PDFExtractor(backend="pymupdf", chunk_size=500)
         gen.custom_instructions = ""
-        gen.method = "twostep"
+        gen.method = "tesseract"
         mock = MagicMock()
         mock.complete.return_value = MOCK_PDF_RESPONSE
         mock.mcq_model = "llama-3.3-70b"
@@ -641,7 +641,9 @@ class TestMCQGeneratorPDF:
                           "chunk_index": 0, "total_chunks": 1, "total_pages": 3, "char_count": 120},
             )
         ]
-        with patch.object(gen.pdf_extractor, "from_url", return_value=mock_blocks):
+        with patch("html2mcq.generator._fetch_bytes", return_value=_make_pdf_bytes()), \
+             patch("html2mcq.pdf.PDFExtractor.detect_scan_type", return_value="text"), \
+             patch.object(gen.pdf_extractor, "from_url", return_value=mock_blocks):
             mcq = gen.from_pdf_url("https://example.com/python.pdf", n=2, pdf_title="Python Guide")
 
         assert isinstance(mcq, MCQSet)
@@ -650,12 +652,14 @@ class TestMCQGeneratorPDF:
         assert mcq.source_url == "https://example.com/python.pdf"
 
     def test_from_pdf_path(self, tmp_path):
+        from unittest.mock import patch
         pdf_bytes = _make_pdf_bytes("Python supports object-oriented and functional programming paradigms.")
         pdf_file = tmp_path / "python_guide.pdf"
         pdf_file.write_bytes(pdf_bytes)
 
         gen = self._make_gen()
-        mcq = gen.from_pdf_path(str(pdf_file), n=2)
+        with patch("html2mcq.pdf.PDFExtractor.detect_scan_type_from_path", return_value="text"):
+            mcq = gen.from_pdf_path(str(pdf_file), n=2)
 
         assert isinstance(mcq, MCQSet)
         assert mcq.total_questions == 2
@@ -671,7 +675,9 @@ class TestMCQGeneratorPDF:
                          metadata={"source_url": "https://example.com/ai.pdf", "backend": "pymupdf",
                                    "chunk_index": 0, "total_chunks": 1, "total_pages": 1, "char_count": 25})
         ]
-        with patch.object(gen.pdf_extractor, "from_url", return_value=mock_blocks):
+        with patch("html2mcq.generator._fetch_bytes", return_value=_make_pdf_bytes()), \
+             patch("html2mcq.pdf.PDFExtractor.detect_scan_type", return_value="text"), \
+             patch.object(gen.pdf_extractor, "from_url", return_value=mock_blocks):
             mcq = gen.from_pdf_url("https://example.com/ai.pdf", n=2)
 
         parsed = json.loads(mcq.to_json())
@@ -690,7 +696,9 @@ class TestMCQGeneratorPDF:
                          metadata={"source_url": "https://example.com/a.pdf", "backend": "pymupdf",
                                    "chunk_index": 0, "total_chunks": 1, "total_pages": 1, "char_count": 20})
         ]
-        with patch.object(gen.pdf_extractor, "from_url", return_value=mock_blocks):
+        with patch("html2mcq.generator._fetch_bytes", return_value=_make_pdf_bytes()), \
+             patch("html2mcq.pdf.PDFExtractor.detect_scan_type", return_value="text"), \
+             patch.object(gen.pdf_extractor, "from_url", return_value=mock_blocks):
             mcq = gen.from_pdf_urls(["https://example.com/a.pdf", "https://example.com/b.pdf"], n=2)
 
         assert isinstance(mcq, MCQSet)
@@ -707,18 +715,22 @@ class TestMCQGeneratorPDF:
                          metadata={"source_url": "https://example.com/p.pdf", "backend": "pymupdf",
                                    "chunk_index": 0, "total_chunks": 1, "total_pages": 1, "char_count": 16})
         ]
-        with patch.object(gen.pdf_extractor, "from_url", return_value=mock_blocks):
+        with patch("html2mcq.generator._fetch_bytes", return_value=_make_pdf_bytes()), \
+             patch("html2mcq.pdf.PDFExtractor.detect_scan_type", return_value="text"), \
+             patch.object(gen.pdf_extractor, "from_url", return_value=mock_blocks):
             mcq = gen.from_pdf_url("https://example.com/p.pdf", n=2, pdf_title="My PDF")
         assert mcq.total_questions == 2
         assert mcq.page_title == "My PDF"
 
     def test_from_pdf_paths(self, tmp_path):
+        from unittest.mock import patch
         pdf_bytes = _make_pdf_bytes("Python supports object-oriented and functional programming.")
         pdf_file = tmp_path / "guide.pdf"
         pdf_file.write_bytes(pdf_bytes)
 
         gen = self._make_gen()
-        mcq = gen.from_pdf_paths(str(pdf_file), n=2)
+        with patch("html2mcq.pdf.PDFExtractor.detect_scan_type_from_path", return_value="text"):
+            mcq = gen.from_pdf_paths(str(pdf_file), n=2)
 
         assert isinstance(mcq, MCQSet)
         assert mcq.total_questions == 2
@@ -726,7 +738,7 @@ class TestMCQGeneratorPDF:
     def test_from_image_urls(self):
         from unittest.mock import patch
         gen = self._make_gen()
-        gen.method = "images2mcq"
+        gen.method = "onestep"
         with patch.object(gen, "_vision_mcq", return_value=[gen._parse_response(MOCK_PDF_RESPONSE)[0]]):
             mcq = gen.from_image_urls("https://example.com/img.png", n=1)
         assert isinstance(mcq, MCQSet)
@@ -736,7 +748,7 @@ class TestMCQGeneratorPDF:
         img = tmp_path / "test.png"
         img.write_bytes(b"fake-png-bytes")
         gen = self._make_gen()
-        gen.method = "images2mcq"
+        gen.method = "onestep"
         from unittest.mock import patch
         with patch.object(gen, "_vision_mcq", return_value=[gen._parse_response(MOCK_PDF_RESPONSE)[0]]):
             mcq = gen.from_image_paths(str(img), n=1)
@@ -782,10 +794,11 @@ class TestCustomInstructions:
         gen.mcq_model_list = None
         gen.batch_size = 10
         gen.max_tokens = 4096
+        gen.timeout = 30
         gen.extractor = ContentExtractor(min_text_length=10)
         gen.pdf_extractor = PDFExtractor(backend="pymupdf")
         gen.custom_instructions = instance_instructions
-        gen.method = "twostep"
+        gen.method = "tesseract"
         mock = MagicMock()
         mock.complete.return_value = MOCK_RESPONSE
         mock.mcq_model = "llama-3.3-70b"
@@ -1005,23 +1018,23 @@ class TestMCQGeneratorInit:
 
     def test_ollama_auto_defaults_model(self):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(provider="ollama", mcq_model="", method="twostep")
+        gen = MCQGenerator(provider="ollama", mcq_model="priority_list", method="auto")
         assert gen.mcq_model == "qwen2.5:7b"
 
     def test_ollama_auto_sets_default(self):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(provider="ollama", mcq_model="auto", method="twostep")
+        gen = MCQGenerator(provider="ollama", mcq_model="priority_list", ocr_model="gpt-4o", method="twostep")
         assert gen.mcq_model == "qwen2.5:7b"
 
     def test_ollama_custom_model_preserved(self):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(provider="ollama", mcq_model="llama3.1:8b", method="twostep")
+        gen = MCQGenerator(provider="ollama", mcq_model="llama3.1:8b", ocr_model="gpt-4o", method="twostep")
         assert gen.mcq_model == "llama3.1:8b"
 
     def test_api_key_override_replaces_backend(self):
         from html2mcq.generator import MCQGenerator
         gen = MCQGenerator(api_key="sk-original", provider="openrouter",
-                           mcq_model="gpt-4o", method="twostep",
+                           mcq_model="gpt-4o", ocr_model="gpt-4o", method="twostep",
                            api_key_override="sk-override")
         # backend was recreated with override key
         assert gen.backend is not None
@@ -1033,7 +1046,7 @@ class TestMCQGeneratorInit:
         old = os.environ.pop("OPENROUTER_API_KEY", None)
         try:
             with pytest.raises(ValueError, match="No API key"):
-                MCQGenerator(provider="openrouter", method="twostep")
+                MCQGenerator(provider="openrouter", ocr_model="gpt-4o", method="twostep")
         finally:
             if old:
                 os.environ["OPENROUTER_API_KEY"] = old
@@ -1045,7 +1058,7 @@ class TestOverrideContext:
     def test_override_api_key_only(self):
         from html2mcq.generator import MCQGenerator, _OverrideContext
         gen = MCQGenerator(api_key="sk-test", provider="openrouter",
-                           mcq_model="gpt-4o", method="twostep")
+                           mcq_model="gpt-4o", ocr_model="gpt-4o", method="twostep")
         orig_backend = gen.backend
         with _OverrideContext(gen, "sk-new", None):
             assert gen.backend is not orig_backend
@@ -1054,7 +1067,7 @@ class TestOverrideContext:
     def test_override_log_path_only(self):
         from html2mcq.generator import MCQGenerator, _OverrideContext
         gen = MCQGenerator(api_key="sk-test", provider="openrouter",
-                           mcq_model="gpt-4o", method="twostep")
+                           mcq_model="gpt-4o", ocr_model="gpt-4o", method="twostep")
         gen.prompt_log_path = None
         with _OverrideContext(gen, None, "/tmp/test_log.txt"):
             assert gen.prompt_log_path == "/tmp/test_log.txt"
@@ -1063,7 +1076,7 @@ class TestOverrideContext:
     def test_override_both(self):
         from html2mcq.generator import MCQGenerator, _OverrideContext
         gen = MCQGenerator(api_key="sk-test", provider="openrouter",
-                           mcq_model="gpt-4o", method="twostep")
+                           mcq_model="gpt-4o", ocr_model="gpt-4o", method="twostep")
         orig_backend = gen.backend
         gen.prompt_log_path = None
         with _OverrideContext(gen, "sk-new", "/tmp/log.txt"):
@@ -1078,7 +1091,7 @@ class TestOverrideContext:
 class TestLogPrompt:
     def test_log_to_stdout(self, capsys):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="twostep")
         gen.prompt_log_path = "stdout"
         gen._log_prompt("TEST", "hello world")
         captured = capsys.readouterr()
@@ -1087,7 +1100,7 @@ class TestLogPrompt:
 
     def test_log_to_file(self, tmp_path):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="twostep")
         logfile = tmp_path / "prompt.log"
         gen.prompt_log_path = str(logfile)
         gen._log_prompt("TEST", "file content")
@@ -1097,7 +1110,7 @@ class TestLogPrompt:
 
     def test_log_noop_when_none(self, capsys):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="twostep")
         gen.prompt_log_path = None
         gen._log_prompt("TEST", "should not appear")
         captured = capsys.readouterr()
@@ -1109,62 +1122,62 @@ class TestLogPrompt:
 class TestParseResponse:
     def test_markdown_fences_json(self):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="twostep")
         raw = '```json\n[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":""}]\n```'
         result = gen._parse_response(raw)
         assert len(result) == 1
 
     def test_markdown_fences_no_lang(self):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="twostep")
         raw = '```\n[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":""}]\n```'
         result = gen._parse_response(raw)
         assert len(result) == 1
 
     def test_single_int_answer(self):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="twostep")
         raw = '[{"question_html":"Q","options":["A","B","C","D"],"answers":2,"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":""}]'
         result = gen._parse_response(raw)
         assert result[0].answers == [2]
 
     def test_invalid_json_with_array(self):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="twostep")
         raw = 'Some text [{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":""}] trailing'
         result = gen._parse_response(raw)
         assert len(result) == 1
 
     def test_invalid_json_no_array_raises(self):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="twostep")
         with pytest.raises(ValueError, match="non-JSON"):
             gen._parse_response("not json at all")
 
     def test_malformed_item_skipped(self):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="twostep")
         raw = '[{"question_html":"Q1","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":""},{"question_html":"Q2","options":"not a list","answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":""}]'
         result = gen._parse_response(raw)
         assert len(result) == 1
 
     def test_answers_as_list_of_ints(self):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="twostep")
         raw = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0,2],"multi":true,"marks":1,"negative_marks":0,"difficulty":"medium","explanation":""}]'
         result = gen._parse_response(raw)
         assert result[0].answers == [0, 2]
 
     def test_explanation_fallback(self):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="twostep")
         raw = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":"uses explanation key"}]'
         result = gen._parse_response(raw)
         assert result[0].explanation == "uses explanation key"
 
     def test_null_item_skipped(self):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="twostep")
         raw = '[{"question_html":"Q1","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":""},null,{"question_html":"Q2","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":""}]'
         result = gen._parse_response(raw)
         assert len(result) == 2
@@ -1213,15 +1226,15 @@ class TestResolveMcqModelList:
 class TestGenerateEdgeCases:
     def test_empty_blocks_returns_empty(self):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="twostep")
         qs, summary = gen._generate([], n=5, page_title="Test", source_url=None, difficulty_mix=None, focus_topics=None)
         assert qs == []
         assert summary == ""
 
     def test_auto_mode_all_models_fail(self):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", mcq_model="auto",
-                           mcq_model_list=["test-fail-model"], method="twostep")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", mcq_model="priority_list",
+                           mcq_model_list=["test-fail-model"], method="auto")
         gen.backend.complete = lambda s, u, m: ""
         with pytest.raises(RuntimeError, match="All MCQ models in list failed"):
             gen._generate([ContentBlock(type="text", content="hello")], n=2, page_title="Test", source_url=None, difficulty_mix=None, focus_topics=None)
@@ -1232,7 +1245,7 @@ class TestGenerateEdgeCases:
 class TestVisionMcq:
     def test_no_api_key_returns_empty(self):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="images2mcq")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="onestep")
         gen.image_ocr_extractor.vision_api_key = ""
         result = gen._vision_mcq([ContentBlock(type="image", content="https://example.com/img.png")], n=2, page_title="Test")
         assert result == []
@@ -1240,7 +1253,7 @@ class TestVisionMcq:
     def test_no_openai_returns_empty(self, monkeypatch):
         from html2mcq.generator import MCQGenerator
         import builtins
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="images2mcq")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="onestep")
         gen.image_ocr_extractor.vision_api_key = "sk-test"
         orig_import = builtins.__import__
         def mock_import(name, *args, **kw):
@@ -1254,7 +1267,7 @@ class TestVisionMcq:
     def test_all_downloads_fail_returns_empty(self, monkeypatch):
         from html2mcq.generator import MCQGenerator
         from html2mcq import image_ocr
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="images2mcq")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="onestep")
         gen.image_ocr_extractor.vision_api_key = "sk-test"
         monkeypatch.setattr("html2mcq.generator._download_image", lambda url, **kw: None)
         result = gen._vision_mcq([ContentBlock(type="image", content="https://example.com/img.png")], n=2, page_title="Test")
@@ -1266,7 +1279,7 @@ class TestVisionMcq:
 class TestImageTwostep:
     def test_all_downloads_fail_raises(self, monkeypatch):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="twostep")
         monkeypatch.setattr("html2mcq.generator._download_image", lambda url, **kw: None)
         gen.save_ocr_path = None
         with pytest.raises(ValueError, match="No image data"):
@@ -1276,7 +1289,7 @@ class TestImageTwostep:
 
     def test_save_ocr_path_writes_file(self, monkeypatch, tmp_path):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="twostep")
         monkeypatch.setattr("html2mcq.generator._download_image", lambda url, **kw: b"fake-img-data")
         gen.image_ocr_extractor.ocr_image_bytes = lambda blobs: "OCR extracted text"
         gen.save_ocr_path = str(tmp_path / "ocr_out.txt")
@@ -1296,15 +1309,15 @@ class TestImageTwostep:
 class TestImageMethodDispatch:
     def test_image_urls_twostep(self):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="twostep")
         # Mock _image_twostep to avoid actual downloads
         gen._image_twostep = lambda **kw: MCQSet(None, "Test", [], 0, "", total_exam_time=0)
         result = gen.from_image_urls("https://example.com/img.png", n=1)
         assert isinstance(result, MCQSet)
 
-    def test_image_urls_images2mcq(self):
+    def test_image_urls_onestep(self):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="images2mcq")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="onestep")
         gen.image_ocr_extractor.vision_api_key = ""
         gen._vision_mcq = lambda *args, **kw: []
         result = gen.from_image_urls("https://example.com/img.png", n=1)
@@ -1312,7 +1325,7 @@ class TestImageMethodDispatch:
 
     def test_image_paths_single_string(self):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="images2mcq")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="onestep")
         gen.image_ocr_extractor.vision_api_key = ""
         gen._vision_mcq = lambda *args, **kw: []
         with pytest.raises(FileNotFoundError):
@@ -1320,7 +1333,7 @@ class TestImageMethodDispatch:
 
     def test_image_urls_single_string_to_list(self):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="twostep")
         gen._image_twostep = lambda **kw: MCQSet(None, "Test", [], 0, "", total_exam_time=0)
         result = gen.from_image_urls("https://example.com/img.png", n=1)
         assert isinstance(result, MCQSet)
@@ -1331,27 +1344,37 @@ class TestImageMethodDispatch:
 class TestPdfEdgeCases:
     def test_pdf_urls_empty_pdf_raises(self):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
-        gen.pdf_extractor.from_url = lambda url, **kw: []
-        with pytest.raises(ValueError, match="No text could be extracted from PDF"):
-            gen.from_pdf_urls("https://example.com/test.pdf", n=2)
+        from unittest.mock import patch
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="twostep")
+        with patch("html2mcq.generator._fetch_bytes", return_value=_make_pdf_bytes()), \
+             patch("html2mcq.pdf.PDFExtractor.detect_scan_type", return_value="text"), \
+             patch.object(gen.pdf_extractor, "from_bytes", return_value=[]):
+            with pytest.raises(ValueError, match="No text could be extracted from PDF"):
+                gen.from_pdf_urls("https://example.com/test.pdf", n=2)
 
     def test_pdf_paths_empty_pdf_raises(self, tmp_path):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
-        gen.pdf_extractor.from_path = lambda path, **kw: []
-        with pytest.raises(ValueError, match="No text could be extracted from PDF"):
-            gen.from_pdf_paths(str(tmp_path / "test.pdf"), n=2)
+        from unittest.mock import patch
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="twostep")
+        pdf_file = tmp_path / "test.pdf"
+        pdf_file.write_bytes(_make_pdf_bytes()) # Ensure file exists
+        with patch("html2mcq.pdf.PDFExtractor.detect_scan_type_from_path", return_value="text"), \
+             patch.object(gen.pdf_extractor, "from_path", return_value=[]):
+            with pytest.raises(ValueError, match="No text could be extracted from PDF"):
+                gen.from_pdf_paths(str(pdf_file), n=2)
 
     def test_pdf_urls_single_string_to_list(self):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        from unittest.mock import patch
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="twostep")
         gen.pdf_extractor.from_url = lambda url, **kw: [ContentBlock(type="pdf_text", content="test")]
         mock_backend = MagicMock()
         mock_backend.complete.return_value = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":""}]'
         mock_backend.mcq_model = "test"
         gen.backend = mock_backend
-        result = gen.from_pdf_urls("https://example.com/test.pdf", n=1)
+        with patch("html2mcq.generator._fetch_bytes", return_value=_make_pdf_bytes()), \
+             patch("html2mcq.pdf.PDFExtractor.detect_scan_type", return_value="text"):
+            result = gen.from_pdf_urls("https://example.com/test.pdf", n=1)
         assert result.total_questions == 1
 
 
@@ -1360,7 +1383,7 @@ class TestPdfEdgeCases:
 class TestFromBlocks:
     def test_from_blocks_basic(self):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="twostep")
         mock_backend = MagicMock()
         mock_backend.complete.return_value = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":""}]'
         mock_backend.mcq_model = "test"
@@ -1371,7 +1394,7 @@ class TestFromBlocks:
 
     def test_from_blocks_with_prompt_log(self, tmp_path):
         from html2mcq.generator import MCQGenerator
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="twostep")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="twostep")
         mock_backend = MagicMock()
         mock_backend.complete.return_value = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":""}]'
         mock_backend.mcq_model = "test"
@@ -1383,13 +1406,13 @@ class TestFromBlocks:
         assert logfile.exists()
 
 
-# ── from_html with images2mcq method ────────────────────────────────────────
+# ── from_html with onestep method ────────────────────────────────────────
 
 class TestFromHtmlMethod:
-    def test_from_html_images2mcq_with_images(self):
+    def test_from_html_onestep_with_images(self):
         from html2mcq.generator import MCQGenerator
         from html2mcq.extractor import ContentExtractor
-        gen = MCQGenerator(api_key="sk-test", provider="openrouter", method="images2mcq")
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", ocr_model="gpt-4o", method="onestep")
         mock_backend = MagicMock()
         mock_backend.complete.return_value = '[{"question_html":"Q","options":["A","B","C","D"],"answers":[0],"multi":false,"marks":1,"negative_marks":0.25,"difficulty":"easy","explanation":""}]'
         mock_backend.mcq_model = "test"
@@ -1425,7 +1448,7 @@ class TestCLI:
         from html2mcq import cli
         html_file = tmp_path / "page.html"
         html_file.write_text("<html><body><p>test</p></body></html>", encoding="utf-8")
-        monkeypatch.setattr(sys, "argv", ["html2mcq", "--html", str(html_file), "-n", "1", "--api-key", "sk-test"])
+        monkeypatch.setattr(sys, "argv", ["html2mcq", "--html", str(html_file), "-n", "1", "--api-key", "sk-test", "--method", "auto", "--mcq-model", "gpt-4o"])
         from html2mcq.generator import MCQGenerator
         orig = MCQGenerator.from_html
         try:
@@ -1437,7 +1460,7 @@ class TestCLI:
     def test_cli_url_input(self, monkeypatch):
         import sys
         from html2mcq import cli
-        monkeypatch.setattr(sys, "argv", ["html2mcq", "https://example.com", "-n", "1", "--api-key", "sk-test"])
+        monkeypatch.setattr(sys, "argv", ["html2mcq", "https://example.com", "-n", "1", "--api-key", "sk-test", "--method", "auto", "--mcq-model", "gpt-4o"])
         from html2mcq.generator import MCQGenerator
         orig = MCQGenerator.from_url
         try:
@@ -1451,6 +1474,7 @@ class TestCLI:
         from html2mcq import cli
         monkeypatch.setattr(sys, "argv", ["html2mcq", "https://example.com", "-n", "1",
                                           "--api-key", "sk-test", "--format", "json",
+                                          "--method", "auto", "--mcq-model", "gpt-4o",
                                           "--output", str(tmp_path / "out.json")])
         from html2mcq.generator import MCQGenerator
         orig = MCQGenerator.from_url
@@ -1464,7 +1488,7 @@ class TestCLI:
     def test_cli_version(self, monkeypatch):
         import sys
         from html2mcq import cli
-        monkeypatch.setattr(sys, "argv", ["html2mcq", "--version"])
+        monkeypatch.setattr(sys, "argv", ["html2mcq", "--version", "--method", "auto"])
         try:
             cli.main()
         except SystemExit as e:
@@ -1473,7 +1497,7 @@ class TestCLI:
     def test_cli_no_input_shows_error(self, monkeypatch):
         import sys
         from html2mcq import cli
-        monkeypatch.setattr(sys, "argv", ["html2mcq", "--api-key", "sk-test"])
+        monkeypatch.setattr(sys, "argv", ["html2mcq", "--api-key", "sk-test", "--method", "auto", "--mcq-model", "gpt-4o"])
         try:
             cli.main()
         except SystemExit as e:
@@ -1482,7 +1506,7 @@ class TestCLI:
     def test_cli_default_n_is_999(self, monkeypatch):
         import sys
         from html2mcq import cli
-        monkeypatch.setattr(sys, "argv", ["html2mcq", "https://example.com", "--api-key", "sk-test"])
+        monkeypatch.setattr(sys, "argv", ["html2mcq", "https://example.com", "--api-key", "sk-test", "--method", "auto", "--mcq-model", "gpt-4o"])
         import argparse
         parser = argparse.ArgumentParser()
         parser.add_argument("-n", "--n", type=int, default=999)
@@ -1493,7 +1517,7 @@ class TestCLI:
         import sys
         from html2mcq import cli
         monkeypatch.setattr(sys, "argv", ["html2mcq", "--pdf-url", "https://example.com/doc.pdf",
-                                          "-n", "1", "--api-key", "sk-test"])
+                                          "-n", "1", "--api-key", "sk-test", "--method", "auto", "--mcq-model", "gpt-4o"])
         from html2mcq.generator import MCQGenerator
         orig = MCQGenerator.from_pdf_urls
         try:
@@ -1508,7 +1532,7 @@ class TestCLI:
         pdf_file = tmp_path / "test.pdf"
         pdf_file.write_text("dummy pdf")
         monkeypatch.setattr(sys, "argv", ["html2mcq", "--pdf-path", str(pdf_file),
-                                          "-n", "1", "--api-key", "sk-test"])
+                                          "-n", "1", "--api-key", "sk-test", "--method", "auto", "--mcq-model", "gpt-4o"])
         from html2mcq.generator import MCQGenerator
         orig = MCQGenerator.from_pdf_paths
         try:
@@ -1521,7 +1545,7 @@ class TestCLI:
         import sys
         from html2mcq import cli
         monkeypatch.setattr(sys, "argv", ["html2mcq", "--image-url", "https://example.com/img.png",
-                                          "-n", "1", "--api-key", "sk-test"])
+                                          "-n", "1", "--api-key", "sk-test", "--method", "auto", "--mcq-model", "gpt-4o"])
         from html2mcq.generator import MCQGenerator
         orig = MCQGenerator.from_image_urls
         try:
@@ -1536,7 +1560,7 @@ class TestCLI:
         img_file = tmp_path / "test.png"
         img_file.write_text("dummy png")
         monkeypatch.setattr(sys, "argv", ["html2mcq", "--image-path", str(img_file),
-                                          "-n", "1", "--api-key", "sk-test"])
+                                          "-n", "1", "--api-key", "sk-test", "--method", "auto", "--mcq-model", "gpt-4o"])
         from html2mcq.generator import MCQGenerator
         orig = MCQGenerator.from_image_paths
         try:
@@ -1554,7 +1578,7 @@ class TestCLI:
         (img_dir / "slide2.png").write_text("dummy png 2")
         (img_dir / "readme.txt").write_text("not an image")
         monkeypatch.setattr(sys, "argv", ["html2mcq", "--image-folder", str(img_dir),
-                                          "-n", "1", "--api-key", "sk-test"])
+                                          "-n", "1", "--api-key", "sk-test", "--method", "auto", "--mcq-model", "gpt-4o"])
         from html2mcq.generator import MCQGenerator
         orig = MCQGenerator.from_image_paths
         try:
@@ -1571,7 +1595,7 @@ class TestCLI:
         (pdf_dir / "chapter1.pdf").write_text("dummy pdf 1")
         (pdf_dir / "chapter2.pdf").write_text("dummy pdf 2")
         monkeypatch.setattr(sys, "argv", ["html2mcq", "--pdf-folder", str(pdf_dir),
-                                          "-n", "1", "--api-key", "sk-test"])
+                                          "-n", "1", "--api-key", "sk-test", "--method", "auto", "--mcq-model", "gpt-4o"])
         from html2mcq.generator import MCQGenerator
         orig = MCQGenerator.from_pdf_paths
         try:
@@ -1584,7 +1608,8 @@ class TestCLI:
         import sys
         from html2mcq import cli
         monkeypatch.setattr(sys, "argv", ["html2mcq", "--image-folder", "/nonexistent",
-                                          "--api-key", "sk-test"])
+                                          "--api-key", "sk-test", "--method", "auto", "--mcq-model", "gpt-4o"
+])
         try:
             cli.main()
         except SystemExit as e:
@@ -1593,7 +1618,7 @@ class TestCLI:
     def test_cli_env_var_api_key(self, monkeypatch):
         import sys
         from html2mcq import cli
-        monkeypatch.setattr(sys, "argv", ["html2mcq", "https://example.com", "-n", "1"])
+        monkeypatch.setattr(sys, "argv", ["html2mcq", "https://example.com", "-n", "1", "--method", "auto", "--mcq-model", "gpt-4o"])
         monkeypatch.setenv("OPENROUTER_API_KEY", "sk-env-test")
         from html2mcq.generator import MCQGenerator
         orig = MCQGenerator.from_url
@@ -1602,6 +1627,7 @@ class TestCLI:
             cli.main()
         finally:
             MCQGenerator.from_url = orig
+
 
 
 class TestEnvHelpers:
@@ -1645,9 +1671,31 @@ class TestEnvHelpers:
         import os
         assert os.environ["OPENROUTER_API_KEY"] == "sk-existing"
 
-    def test_set_api_key_ollama_noop(self):
+    def test_provider_mappings(self):
         from html2mcq.generator import MCQGenerator
         import os
-        os.environ.pop("OPENROUTER_API_KEY", None)
-        MCQGenerator.set_api_key("ollama", "should-not-set")
-        assert os.environ.get("OPENROUTER_API_KEY") is None
+        
+        # Test Gemini
+        os.environ["GEMINI_API_KEY"] = "sk-gemini"
+        gen = MCQGenerator(provider="gemini", method="tesseract", mcq_model="gemini-1.5-flash")
+        assert gen.ENV_KEYS["gemini"] == "GEMINI_API_KEY"
+        assert gen._resolved_api_key == "sk-gemini"
+        
+        # Test DeepSeek
+        os.environ["DEEPSEEK_API_KEY"] = "sk-deepseek"
+        gen = MCQGenerator(provider="deepseek", method="tesseract", mcq_model="deepseek-chat")
+        assert gen.ENV_KEYS["deepseek"] == "DEEPSEEK_API_KEY"
+        assert gen._resolved_api_key == "sk-deepseek"
+        
+        # Test Groq
+        os.environ["GROQ_API_KEY"] = "sk-groq"
+        gen = MCQGenerator(provider="groq", method="tesseract", mcq_model="llama-3.3-70b")
+        assert gen.ENV_KEYS["groq"] == "GROQ_API_KEY"
+        assert gen._resolved_api_key == "sk-groq"
+
+        # Test ManualAI
+        os.environ["MANUALAI_API_KEY"] = "sk-manual"
+        os.environ["MANUALAI_BASE_URL"] = "https://custom.api/v1"
+        gen = MCQGenerator(provider="manualai", method="tesseract", mcq_model="my-model")
+        assert gen.ENV_KEYS["manualai"] == "MANUALAI_API_KEY"
+        assert gen._resolved_api_key == "sk-manual"

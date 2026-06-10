@@ -1,9 +1,26 @@
+## [3.0.0] - 2026-06-10
+### Added
+- **Native Async Support**: New `AsyncMCQGenerator` class for non-blocking usage.
+- **LMS Exporting**: Direct export to Aiken and Moodle XML formats via `--format`.
+- **Hybrid Vision Mode**: `onestep` method now combines HTML text and raw images in a single multi-modal prompt.
+- **Native PDF Vision**: Support for sending raw PDF bytes directly to Gemini/OpenRouter in `onestep` mode.
+- **Resilient Retries**: Automatic exponential backoff for rate limits (429) and server overloads (503).
+- **New Providers**: Native support for `gemini`, `deepseek`, `groq`, and `manualai`.
+- **Operator-Aware Selection**: Target specific models for specific providers using `(provider)/model_id` syntax.
+
+### Changed
+- **Breaking**: `method` parameter is now **mandatory** in both CLI and library.
+- **Breaking**: `images2mcq` method renamed to `onestep`.
+- **Breaking**: `auto` value for model parameters renamed to `priority_list`.
+- **Breaking**: `pytesseract` is no longer a valid model name; use `method="tesseract"` instead.
+- Refined `auto` method resolution logic to intelligently choose strategy based on provided models.
+
 ## [2.0.0] - 2026-06-08
 ### Added
 - `from_image_urls()` / `from_image_paths()` — generate MCQs directly from images
 - `from_pdf_urls()` / `from_pdf_paths()` — renamed from singular, accept `str|list[str]`
 - `method="twostep"` (default) — OCR images → text → MCQ pipeline
-- `method="images2mcq"` — vision model direct (bypasses OCR)
+- `method="onestep"` — vision model direct (bypasses OCR)
 - `mcq_model` — single parameter for all MCQ generation (text + vision), replaces `model`
 - `mcq_model="auto"` — tries `mcq_model_list` in order until one succeeds
 - `mcq_model_list` — priority-ordered model list, runtime-reloadable via env var

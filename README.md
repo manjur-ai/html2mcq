@@ -8,13 +8,40 @@
 
 ---
 
+### **Processing Methods**
+
+```text
+┌───────────┬──────────────────────────────────────────────────────────┐
+│ Method    │ Strategy (MANDATORY)                                     │
+├───────────┼──────────────────────────────────────────────────────────┤
+│ auto      │ Smart Choice (Recommended).                              │
+│ onestep   │ Hybrid Vision (AI sees images + reads text).             │
+│ twostep   │ AI-based OCR (AI reads text, then writes quiz).          │
+│ tesseract │ Local OCR (Tesseract reads text, AI writes quiz).        │
+└───────────┴──────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Key Features
+
+- **Multi-Provider Support**: Gemini, DeepSeek, Groq, OpenAI, Anthropic, OpenRouter, and ManualAI.
+- **Async Support**: Native `AsyncMCQGenerator` for high-performance integration.
+- **LMS Export**: Direct export to **Aiken** and **Moodle XML** formats for easy course importing.
+- **Native PDF Vision**: Sends raw PDF data directly to Gemini for highest extraction quality.
+- **Resilient Retries**: Automatic exponential backoff for rate limits and transient errors.
+- **Hybrid Vision**: Simultaneous text + image analysis in `onestep` mode.
+- **Smart Choice**: `method="auto"` intelligently chooses the best processing path.
+
+---
+
 ## Install
 
 ```bash
 pip install html2mcq
 ```
 
-Everything is included — HTML extraction, PDF support, OCR, all AI providers.
+Everything is included — HTML extraction, PDF support, OCR, all AI providers, and **native async support**.
 
 ---
 
@@ -23,47 +50,52 @@ Everything is included — HTML extraction, PDF support, OCR, all AI providers.
 ```python
 from html2mcq import MCQGenerator
 
+# Standard setup: Smart Mode (auto)
 gen = MCQGenerator(
-    api_key="sk-or-v1-...",
-    provider="openrouter",
-    mcq_model="google/gemini-2.5-flash-lite",
+    api_key="sk-...",
+    provider="openai",  # e.g. using Gemini via OpenAI endpoint
+    method="auto",      # Now mandatory
+    mcq_model="gemini-2.0-flash",
 )
 
-# From an HTML tutorial page
-mcq = gen.from_url("https://docs.python.org/3/tutorial/", n=15)
+# 1. From a Website (Auto-selects twostep)
+mcq = gen.from_url("https://example.com/tutorial", n=5)
 
-# From a PDF URL
-mcq = gen.from_pdf_urls("https://example.com/tutorial.pdf", n=10)
-
-# From a local PDF file
-mcq = gen.from_pdf_paths("/path/to/notes.pdf", n=10)
-
-# From image files (OCR → MCQ in one step)
+# 2. From a Scanned Image (Auto-selects onestep)
+# Since we didn't specify ocr_model, 'auto' uses mcq_model for vision.
 mcq = gen.from_image_paths("screenshot.png", n=5)
 
-# From image URLs (vision model direct)
-mcq = gen.from_image_urls("https://example.com/diagram.png", n=5)
+# 3. High-Accuracy AI OCR (Forced twostep)
+# ocr_model reads the text, mcq_model writes the quiz.
+mcq = gen.from_image_paths("blurry_notes.jpg", n=5, 
+                           method="twostep", 
+                           ocr_model="gemini-2.0-flash-pro")
 
-print(mcq.to_json())
 print(mcq.to_pretty_str())
 ```
 
 ---
 
-## Input Methods
+## Processing Methods (`--method`)
 
-| Input | Method | Batch support |
-|---|---|---|
-| HTML tutorial page URL | `from_url(url)` | ❌ single URL |
-| Raw HTML string | `from_html(html)` | ❌ single string |
-| PDF via URL | `from_pdf_urls(url)` | ✅ `list[str]` |
-| Local PDF file | `from_pdf_paths(path)` | ✅ `list[str]` |
-| Image files (local) | `from_image_paths(path)` | ✅ `list[str]` |
-| Image URLs | `from_image_urls(url)` | ✅ `list[str]` |
-| Raw HTML string | `from_html_string(html)` / `from_html(html)` | ❌ single string |
-| Local HTML file | `from_html_path(path)` | ❌ single path |
-| HTML folder | `from_html_folder(folder)` | ✅ folder scan |
-| Pre-built content blocks | `from_blocks(blocks)` | ❌ single list |
+The tool intelligently routes your content based on the `--method` parameter. **`auto`** is the default and usually the best choice.
+
+| Method | Strategy | OCR Engine | MCQ Writer | Required Params |
+|:---|:---|:---|:---|:---|
+| **`auto`** | Smart Choice | AI Priority List | `mcq_model` | `--mcq-model` or `--ocr-model` |
+| **`onestep`** | Vision-Direct | `ocr_model` | `ocr_model` | `--ocr-model` (AI model) |
+| **`twostep`** | AI-based OCR | `ocr_model` | `mcq_model`¹ | `--ocr-model` (AI model) |
+| **`tesseract`** | Local OCR | Tesseract | `mcq_model`¹ | `--mcq-model` (AI model) |
+
+¹ *If `mcq_model` is omitted, it falls back to the value provided in `ocr_model`.*
+
+> **Note:** `pytesseract` is an internal engine and cannot be passed as a model name. It is automatically used when you select `--method tesseract`.
+
+### When to use what:
+-   **`auto`**: Use for 99% of cases. It resolves to `onestep` for images and `twostep` for PDFs/HTML.
+-   **`onestep`**: Best for diagrams or complex layouts where the AI needs to "see" the visual relationship.
+-   **`twostep`**: Best for documents with very dense text where you want the highest AI-based OCR accuracy.
+-   **`tesseract`**: Best if you want to use your local machine for OCR (no extra API cost for reading) and only use the AI for writing the quiz.
 
 ---
 
@@ -74,7 +106,7 @@ print(mcq.to_pretty_str())
 ```python
 from html2mcq import MCQGenerator
 
-gen = MCQGenerator(api_key="sk-or-v1-...")
+gen = MCQGenerator(api_key="sk-or-v1-...", method="auto")
 mcq = gen.from_url("https://docs.python.org/3/tutorial/introduction.html", n=5)
 print(mcq.to_pretty_str())
 ```
@@ -82,6 +114,7 @@ print(mcq.to_pretty_str())
 ### 2. Raw HTML string
 
 ```python
+gen = MCQGenerator(api_key="sk-...", method="auto")
 html_string = """
 <html><body>
 <h1>Python Lists</h1>
@@ -126,133 +159,40 @@ mcq = gen.from_pdf_paths([
 ], n=15)
 ```
 
-### 7. Image files with OCR (two-step)
+### 7. Image files with AI OCR (two-step)
 
 ```python
+# gemini-flash will be used for both Reading and Writing
 gen = MCQGenerator(
-    api_key="sk-or-v1-...",
+    api_key="sk-...",
     method="twostep",
-    ocr_model="google/gemini-2.5-flash-lite",
-    save_ocr_path="ocr_output.txt",
+    ocr_model="google/gemini-2.5-flash-lite"
 )
 mcq = gen.from_image_paths("screenshot.png", n=5)
 ```
 
-### 8. Image URLs via vision model (direct)
+### 8. Image URLs via local OCR (Tesseract)
 
 ```python
+# Local Tesseract reads the image, Claude writes the quiz
 gen = MCQGenerator(
-    api_key="sk-or-v1-...",
-    method="images2mcq",
+    api_key="sk-...",
+    method="tesseract",
+    mcq_model="claude-3-5-sonnet-20241022"
 )
 mcq = gen.from_image_urls("https://example.com/diagram.png", n=5)
 ```
 
-### 9. Batch image files
+### 9. Vision-Direct (AI looks at image)
 
 ```python
-mcq = gen.from_image_paths([
-    "slide01.png",
-    "slide02.png",
-    "slide03.png",
-], n=15)
-```
-
-### 8. Page range for PDFs
-
-```python
-# Only process specific pages (1-indexed)
-mcq = gen.from_pdf_urls("https://example.com/textbook.pdf", n=10, pages="1-10,15,20-25")
-```
-
-### 9. Progress bar during generation
-
-```python
-mcq = gen.from_pdf_urls("https://example.com/textbook.pdf", n=10, show_progress=True)
-```
-
-### 11. Generate as many questions as possible
-
-```python
-# When n=999, the AI covers every distinct topic in the content
-mcq = gen.from_url("https://docs.python.org/3/tutorial/", n=999)
-print(f"Generated {len(mcq.questions)} questions")
-```
-
-### 9. Difficulty mix and topic focus
-
-```python
-mcq = gen.from_url(
-    "https://docs.python.org/3/tutorial/",
-    n=20,
-    difficulty_mix="50% easy, 30% medium, 20% hard",
-    focus_topics=["lists", "dictionaries", "loops"],
-)
-```
-
-### 10. Custom instructions per call
-
-```python
-mcq = gen.from_url(
-    "https://docs.python.org/3/tutorial/",
-    n=10,
-    custom_instructions="All questions must be code-based. Include the code snippet in the question.",
-)
-```
-
-### 12. Pre-extracted content blocks
-
-```python
-from html2mcq import MCQGenerator, ContentExtractor
-
-extractor = ContentExtractor()
-title, blocks = extractor.from_url("https://docs.python.org/3/tutorial/")
-
-# Filter to only code blocks
-code_blocks = [b for b in blocks if b.type == "code"]
-mcq = gen.from_blocks(code_blocks, n=5)
-```
-
-### 14. Save output to JSON file
-
-```python
-import json
-
-mcq = gen.from_url("https://docs.python.org/3/tutorial/", n=10)
-with open("quiz.json", "w") as f:
-    json.dump(mcq.to_json(), f, indent=2)
-```
-
-### 15. Filter questions by difficulty
-
-```python
-mcq = gen.from_url("https://docs.python.org/3/tutorial/", n=20)
-easy = mcq.filter_by_difficulty("easy")
-medium = mcq.filter_by_difficulty("medium")
-hard = mcq.filter_by_difficulty("hard")
-print(f"Easy: {len(easy)}, Medium: {len(medium)}, Hard: {len(hard)}")
-```
-
-### 16. Different AI provider — Anthropic
-
-```python
+# ocr_model is mandatory here and performs the entire task
 gen = MCQGenerator(
-    api_key="sk-ant-...",
-    provider="anthropic",
-    mcq_model="claude-3-5-sonnet-20241022",
+    api_key="sk-...",
+    method="onestep",
+    ocr_model="google/gemini-2.5-flash-lite"
 )
-mcq = gen.from_url("https://docs.python.org/3/tutorial/", n=10)
-```
-
-### 17. Local Ollama (no API key needed)
-
-```python
-gen = MCQGenerator(
-    provider="ollama",
-    mcq_model="qwen2.5:7b",
-    ollama_base_url="http://localhost:11434/v1",
-)
-mcq = gen.from_url("https://docs.python.org/3/tutorial/", n=5)
+mcq = gen.from_image_paths("complex_diagram.png", n=3)
 ```
 
 ---
@@ -261,93 +201,135 @@ mcq = gen.from_url("https://docs.python.org/3/tutorial/", n=5)
 
 ```python
 gen = MCQGenerator(
-    provider="openrouter",                         # default, also: "anthropic" | "openai" | "ollama"
-    api_key="sk-or-v1-...",                        # or set env var OPENROUTER_API_KEY
-    api_key_override="sk-or-v1-...",               # override key for this instance
-    mcq_model="google/gemini-2.5-flash-lite",      # model for ALL MCQ generation
-    mcq_model_list=["model1", "model2"],           # fallback list for mcq_model="auto"
-    ocr_model="pytesseract",                       # OCR for HTML images: "pytesseract" | "auto" | model ID
-    ocr_models=["model1", "pytesseract"],          # priority list for ocr_model="auto"
-    method="twostep",                              # "twostep" (OCR→MCQ) | "images2mcq" (vision direct)
-    save_ocr_path="ocr_output.txt",                # save OCR text when method=twostep
-    prompt_log_path="stdout",                      # dump prompts: file path | "stdout" | "-"
+    provider="openrouter",                         # "anthropic" | "openai" | "openrouter" | "gemini" | "deepseek" | "groq" | "manualai" | "ollama"
+    api_key="sk-...",                              # your API key
+    method="auto",                                 # MANDATORY: "auto" | "onestep" | "twostep" | "tesseract"
+    mcq_model="google/gemini-2.5-flash-lite",      # the writer (used if method is not onestep)
+    ocr_model="google/gemini-2.5-flash-lite",      # the reader (mandatory for onestep/twostep)
+    manualai_base_url="https://...",               # only for provider="manualai"
+    ocr_fallback=True,                             # fall back to Tesseract if AI OCR fails
+    save_ocr_path="ocr_output.txt",                # save extracted text to file
+    prompt_log_path="stdout",                      # dump prompts for debugging
     batch_size=10,
     max_tokens=4096,
-    custom_instructions="Make answers tricky",
 )
 ```
 
-### New in v2
+### Parameter Roles
 
-| Parameter | What it does |
-|---|---|
-| `mcq_model` | Single source of truth for all MCQ generation (text + vision). Renamed from `model`. |
-| `mcq_model="auto"` | Tries `mcq_model_list` in order until one succeeds. |
-| `mcq_model_list` | Priority-ordered models for auto mode. Runtime-reloadable via `HTML2MCQ_MCQ_MODELS` env var. |
-| `ocr_model` | OCR backend: `"pytesseract"` (default), `"auto"` (priority list), or any OpenRouter model ID. |
-| `ocr_model="auto"` | Tries `ocr_models` priority list. |
-| `ocr_models` | Priority list for auto OCR. Reloadable via `HTML2MCQ_OCR_MODELS` env var. |
-| `method` | `"twostep"` (OCR images → text → MCQs) or `"images2mcq"` (vision model direct). |
-| `prompt_log_path` | Dump full prompts to file or terminal. Use `"stdout"` or `"-"` for terminal. |
-| `api_key_override` | Override key for this instance |
-| `save_ocr_path` | Save OCR text to file when method=twostep |
+| Parameter | Role | Logic |
+|:---|:---|:---|
+| `mcq_model` | **The Writer** | Used to generate the final JSON quiz from text. Falls back to `ocr_model` if empty. |
+| `ocr_model` | **The Reader** | Used as the vision engine for `onestep` and `twostep`. |
+| `method` | **The Strategy** | Determines how reading and writing are orchestrated. |
 
 ---
 
-## Two-Step Image Pipeline (`method="twostep"`)
+## Priority Lists
 
-When `method="twostep"` (default), `from_image_paths()` and `from_image_urls()` automatically:
+If you set `mcq_model="priority_list"` or `ocr_model="priority_list"`, the tool will cycle through a list of models until one succeeds. This is highly recommended for production reliability.
 
-1. **OCR** — extract text from images using `ocr_model`
-2. **Generate** — feed text into text-based MCQ generation
+**Customizing the lists via environment variables:**
+*   `HTML2MCQ_MCQ_MODELS`: Comma-separated list for the writer.
+*   `HTML2MCQ_OCR_MODELS`: Comma-separated list for the reader.
 
-Optionally save the OCR text with `save_ocr_path`:
+*Example:* `export HTML2MCQ_MCQ_MODELS="(openai)/gpt-4o,(gemini)/gemini-2.0-flash,llama-3.3-70b"`
 
+---
+
+## API Reference
+
+### `MCQGenerator` (Synchronous)
+
+| Parameter | Default | Description |
+|:---|:---|:---|
+| `provider` | `"openrouter"` | AI provider (see list above) |
+| `api_key` | `None` | API key (falls back to ENV vars) |
+| `method` | `""` | **Mandatory**: `"auto"` \| `"onestep"` \| `"twostep"` \| `"tesseract"` |
+| `mcq_model` | `""` | Model for MCQ generation. Falls back to `ocr_model` |
+| `ocr_model` | `""` | Vision/OCR engine. **Mandatory** for `twostep`/`onestep` |
+| `manualai_base_url` | `""` | Base URL for the `manualai` provider |
+| `ocr_fallback` | `True` | Fall back to Tesseract if AI OCR fails |
+| `ocr_lang` | `"eng"` | Tesseract language code |
+| `save_ocr_path` | `None` | Save extracted text to file |
+
+### `AsyncMCQGenerator` (Asynchronous)
+
+Inherits all parameters from `MCQGenerator`. All methods (`from_url`, `from_html`, etc.) are `async` and must be awaited.
+
+---
+
+## Environment Variables
+
+| Variable | Description |
+|:---|:---|
+| `OPENROUTER_API_KEY` | Key for OpenRouter provider |
+| `ANTHROPIC_API_KEY` | Key for Anthropic provider |
+| `OPENAI_API_KEY` | Key for OpenAI provider |
+| `GEMINI_API_KEY` | Key for Gemini provider |
+| `DEEPSEEK_API_KEY` | Key for DeepSeek provider |
+| `GROQ_API_KEY` | Key for Groq provider |
+| `MANUALAI_API_KEY` | Key for ManualAI provider |
+| `MANUALAI_BASE_URL` | Base URL for ManualAI provider |
+| `HTML2MCQ_MCQ_MODELS` | Default priority list for `mcq_model="priority_list"` |
+| `HTML2MCQ_OCR_MODELS` | Default priority list for `ocr_model="priority_list"` |
+
+
+---
+
+## LMS Exporting
+
+You can export your generated quizzes directly into formats supported by Moodle, Canvas, and Blackboard.
+
+**CLI:**
+```bash
+html2mcq tutorial.html --method auto --format moodle --output quiz.xml
+html2mcq tutorial.html --method auto --format aiken --output quiz.txt
+```
+
+**Python:**
 ```python
-gen = MCQGenerator(method="twostep", ocr_model="google/gemini-2.5-flash-lite",
-                   save_ocr_path="ocr_output.txt")
-
-# OCR → save to file → generate MCQs
-gen.from_image_paths("chart.png", n=5)
+mcq = gen.from_url("https://example.com/lesson")
+with open("moodle_quiz.xml", "w") as f:
+    f.write(mcq.to_moodle_xml())
 ```
 
 ---
 
-## Per-Call Overrides
+## Native PDF Vision
 
-All 7 public methods accept `api_key_override`, `prompt_log_path`, `ocr_model`, and `mcq_model`:
+When using `method="onestep"` with a PDF (and `provider="gemini"`), the tool bypasses PNG rendering and sends the **raw PDF bytes** directly to the AI. This ensures 100% accuracy of the original document layout and is significantly faster.
+
+---
+
+## Async Support
+
+For high-performance applications (like FastAPI), use `AsyncMCQGenerator`:
 
 ```python
-mcq = gen.from_url(
-    "https://example.com/",
-    n=10,
-    api_key_override="sk-or-v1-...",          # different key for this call
-    prompt_log_path="debug_prompt.txt",       # log prompts for this call only
-    ocr_model="google/gemini-2.5-flash-lite", # override OCR model for this call
-    mcq_model="openai/gpt-4o",               # override MCQ model for this call
-)
+import asyncio
+from html2mcq import AsyncMCQGenerator
+
+async def main():
+    gen = AsyncMCQGenerator(api_key="...", provider="openai", method="auto")
+    
+    # Non-blocking calls
+    mcq = await gen.from_url("https://example.com/lesson")
+    print(mcq.to_pretty_str())
+
+asyncio.run(main())
 ```
 
 ---
 
-## Output Schema
+## Hybrid Vision (One-Step HTML)
 
-```json
-{
-  "total_exam_time": 20,
-  "questions": [
-    {
-      "question_html": "Which of these are non-mutating array methods?",
-      "options": ["push()", "map()", "filter()", "pop()"],
-      "answers": [1, 2],
-      "multi": true,
-      "marks": 1,
-      "negative_marks": 0,
-      "difficulty": "medium",
-      "explanation": "map() and filter() return new arrays without modifying the original."
-    }
-  ]
-}
+When you use `method="onestep"` for a website, the tool doesn't just read the text — it sends the actual images found on the page to the AI's "vision" eye. This is perfect for lessons that rely on diagrams.
+
+```python
+# Hybrid Mode: AI sees the text AND the diagrams at once
+gen = MCQGenerator(method="onestep", ocr_model="google/gemini-2.0-flash")
+mcq = gen.from_url("https://example.com/physics-lesson")
 ```
 
 ---
@@ -355,192 +337,70 @@ mcq = gen.from_url(
 ## AI Providers
 
 ```python
-# OpenRouter (default) — 100+ models
-gen = MCQGenerator(api_key="sk-or-...", provider="openrouter",
-                   mcq_model="google/gemini-2.5-flash-lite")
+# Gemini (Google)
+gen = MCQGenerator(api_key="...", provider="gemini", method="auto")
 
-# Anthropic Claude
-gen = MCQGenerator(api_key="sk-ant-...", provider="anthropic")
+# DeepSeek
+gen = MCQGenerator(api_key="...", provider="deepseek", method="auto")
+
+# Groq (Extreme Speed)
+gen = MCQGenerator(api_key="...", provider="groq", method="auto")
+
+# OpenRouter (default) — 100+ models
+gen = MCQGenerator(api_key="...", provider="openrouter", method="auto")
 
 # OpenAI
-gen = MCQGenerator(api_key="sk-...", provider="openai", mcq_model="gpt-4o")
+gen = MCQGenerator(api_key="...", provider="openai", method="auto")
+
+# Anthropic Claude
+gen = MCQGenerator(api_key="...", provider="anthropic", method="auto")
+
+# ManualAI (Any OpenAI-compatible API)
+gen = MCQGenerator(api_key="...", provider="manualai", method="auto", 
+                   manualai_base_url="https://api.my-custom-llm.com/v1")
 
 # Ollama (local, no API key needed)
-gen = MCQGenerator(provider="ollama", mcq_model="qwen2.5:7b",
-                   ollama_base_url="http://localhost:11434/v1")
+gen = MCQGenerator(provider="ollama", method="auto", mcq_model="qwen2.5:7b")
 ```
 
 ---
 
-## OCR Priority (when `ocr_model="auto"`)
+## Operator-Aware Selection
 
-The default priority list is:
-1. `google/gemini-2.5-flash-lite` (fast, cheap)
-2. `google/gemma-3-27b-it` (free)
-3. `google/gemma-3-12b-it` (free)
-4. `openai/gpt-4o` (paid)
-5. `pytesseract` (local fallback)
+You can target specific models for specific providers using the `(provider)/model_id` syntax. This is perfect for building a single configuration that works across different environments.
 
-Override via `ocr_models` parameter or `HTML2MCQ_OCR_MODELS` env var.
-
----
-
-## MCQ Model Priority (when `mcq_model="auto"`)
-
-Tries `mcq_model_list` in order. Override via `HTML2MCQ_MCQ_MODELS` env var (comma-separated):
+**Syntax:** `(provider)/model_id`
 
 ```bash
-export HTML2MCQ_MCQ_MODELS="model1,model2,model3"
+# Example: Only use Gemini if on Google, fallback to Llama otherwise.
+export HTML2MCQ_MCQ_MODELS="(gemini)/gemini-2.0-flash,llama-3.3-70b"
 ```
 
----
+| Match Type | Logic |
+|:---|:---|
+| **Specific** | `(openai)/gpt-4o` — Only used if active provider is **openai**. |
+| **Universal** | `gpt-4o` — Used as a fallback for **any** provider. |
 
-## Custom Instructions
-
-```python
-# Apply to every call
-gen = MCQGenerator(
-    provider="openrouter",
-    custom_instructions="Make answers very close and confusing."
-)
-
-# Or per individual call
-mcq = gen.from_url("https://example.com/", n=10,
-    custom_instructions="All questions must be code-based.")
-```
-
----
-
-## API Reference
-
-### `MCQGenerator`
-
-| Parameter | Default | Description |
-|---|---|---|---|
-| `provider` | `"openrouter"` | `"openrouter"` | `"anthropic"` | `"openai"` | `"ollama"` |
-| `api_key` | `None` | API key or env var |
-| `api_key_override` | `None` | Override key for this instance |
-| `mcq_model` | `""` | Model for all MCQ generation. `"auto"` tries `mcq_model_list` |
-| `mcq_model_list` | `None` | Fallback models for auto mode |
-| `ocr_model` | `"pytesseract"` | OCR backend: `"pytesseract"` | `"auto"` | model ID |
-| `ocr_models` | `None` | Priority list for auto OCR |
-| `ocr_fallback` | `True` | Fall back to Tesseract when vision API fails |
-| `ocr_lang` | `"eng"` | Tesseract language code |
-| `method` | `"twostep"` | `"twostep"` (OCR→MCQ) | `"images2mcq"` |
-| `save_ocr_path` | `None` | Save OCR text to file when `method="twostep"` |
-| `prompt_log_path` | `None` | Dump prompts to file/terminal |
-| `batch_size` | `10` | Questions per API call |
-| `max_tokens` | `4096` | Max tokens per API response |
-| `custom_instructions` | `None` | Global custom instructions |
-| `extractor_kwargs` | `None` | Keyword args forwarded to `ContentExtractor` |
-| `pdf_backend` | `"auto_detect"` | PDF extraction backend |
-| `pdf_scanned_max_pages` | `50` | Max pages to OCR for scanned PDFs |
-| `pdf_chunk_size` | `1500` | Characters per chunk for PDFs |
-
-| Method | Description |
-|---|---|
-| `from_url(url, n, ...)` | HTML page |
-| `from_html(html, n, ...)` | Raw HTML string |
-| `from_html_string(html, n, ...)` | Alias for `from_html` |
-| `from_html_path(path, n, ...)` | Local HTML file |
-| `from_html_folder(folder, n, ...)` | Scan folder for .html files |
-| `from_pdf_urls(urls, n, ...)` | PDF via URL (str or list) |
-| `from_pdf_paths(paths, n, ...)` | Local PDF file (str or list) |
-| `from_image_urls(urls, n, ...)` | Image URLs → MCQ via vision |
-| `from_image_paths(paths, n, ...)` | Local image files → MCQ |
-| `from_blocks(blocks, n, ...)` | Pre-extracted `ContentBlock` list |
-
-All methods accept `api_key_override`, `prompt_log_path`, `ocr_model`, `mcq_model`, `difficulty_mix`, `focus_topics`, `custom_instructions`, `show_progress`. PDF methods additionally accept `pages`.
-
-### `MCQSet`
-
-| Property / Method | Description |
-|---|---|
-| `.questions` | `List[MCQQuestion]` |
-| `.total_exam_time` | Minutes — auto-calculated as n × 2 |
-| `.to_json()` | Exam-ready JSON |
-| `.to_pretty_str()` | Human-readable output |
-| `.filter_by_difficulty(d)` | Filter by `"easy"` / `"medium"` / `"hard"` |
 
 ---
 
 ## CLI
 
 ```bash
-# Basic — URL (n defaults to 999 = cover all topics)
-html2mcq https://docs.python.org/3/tutorial/
+# Smart Mode (Recommended: Vision for images, Text for PDFs)
+html2mcq https://example.com/tutorial --method auto
 
-# Local HTML file
-html2mcq --html ./tutorial.html
+# AI-based OCR (Two-Step)
+html2mcq img.png --method twostep --ocr-model gemini-2.0-flash
 
-# Raw HTML string
-html2mcq --html-string '<html><body><h1>Python</h1></body></html>'
+# Local OCR (Tesseract)
+html2mcq img.png --method tesseract --mcq-model claude-3-5
 
-# Scan HTML folder
-html2mcq --html-folder ./tutorials/
+# Vision Direct (Fastest for diagrams)
+html2mcq diagram.png --method onestep --ocr-model gemini-2.0-flash
 
-# PDF URL (repeatable)
-html2mcq --pdf-url https://example.com/chapter1.pdf --pdf-url https://example.com/chapter2.pdf
-
-# Local PDF file (repeatable)
-html2mcq --pdf-path ./textbook.pdf
-
-# All PDFs from a folder
-html2mcq --pdf-folder ./textbooks/
-
-# Image URL (via vision model)
-html2mcq --image-url https://example.com/diagram.png --method images2mcq
-
-# Local image files (repeatable)
-html2mcq --image-path ./slide1.png --image-path ./slide2.png
-
-# All images from a folder (supports .png, .jpg, .jpeg, .gif, .bmp, .tiff, .webp)
-html2mcq --image-folder ./slides/ --method images2mcq
-
-# Combine image folder + PDF folder
-html2mcq --image-folder ./diagrams/ --pdf-folder ./notes/
-
-# Specify question count
-html2mcq https://example.com/tutorial --n 20
-
-# Output to JSON file
-html2mcq https://example.com/tutorial --output quiz.json --format json
-
-# Difficulty mix and topic focus
-html2mcq https://example.com/tutorial --difficulty "40% easy, 40% medium, 20% hard" --topics variables functions
-
-# Custom instructions
-html2mcq https://example.com/tutorial -i "Make answers very close and confusing"
-
-# Override OCR model per call
-html2mcq --image-folder ./slides/ --ocr-model "google/gemini-2.5-flash-lite"
-
-# Override MCQ model per call
-html2mcq --pdf-folder ./notes/ --mcq-model "openai/gpt-4o"
-
-# Save OCR text to file
-html2mcq --image-folder ./slides/ --method twostep --save-ocr-path ocr_output.txt
-
-# Page range (only process specific pages)
-html2mcq --pdf-url https://example.com/textbook.pdf --pages "1-10,15,20-25"
-
-# Show progress bar during MCQ generation
-html2mcq --pdf-folder ./textbooks/ --progress
-
-# PDF processing options
-html2mcq --pdf-folder ./textbooks/ --pdf-backend pymupdf --scanned-max-pages 100
-
-# AI provider and model
-html2mcq https://example.com/tutorial --provider openai --mcq-model gpt-4o --api-key sk-...
-
-# Auto-detect API key from env var (OPENROUTER_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY)
-html2mcq https://example.com/tutorial
-
-# Local Ollama (no API key needed)
-html2mcq https://example.com/tutorial --provider ollama --mcq-model qwen2.5:7b
-
-# Show version
-html2mcq --version
+# Save OCR results
+html2mcq textbook.pdf --method tesseract --mcq-model gpt-4o --save-ocr-path text.txt
 ```
 
 All output is printed to stdout by default. Use `--output` / `-o` to save to a file.

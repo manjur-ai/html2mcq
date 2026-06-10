@@ -11,7 +11,7 @@ html2mcq --html-string '<html><body><h1>Python</h1></body></html>' -n 5
 html2mcq --html-folder ./tutorials/
 html2mcq --pdf-url https://example.com/notes.pdf -o questions.json --format json
 html2mcq --pdf-path ./textbook.pdf --image-path ./diagram.png
-html2mcq --image-folder ./slides/ --method images2mcq
+html2mcq --image-folder ./slides/ --method onestep
 html2mcq --pdf-folder ./textbooks/
 html2mcq --version
 """
@@ -54,6 +54,10 @@ def _get_api_key(args):
         "openrouter": "OPENROUTER_API_KEY",
         "anthropic": "ANTHROPIC_API_KEY",
         "openai": "OPENAI_API_KEY",
+        "gemini": "GEMINI_API_KEY",
+        "deepseek": "DEEPSEEK_API_KEY",
+        "groq": "GROQ_API_KEY",
+        "manualai": "MANUALAI_API_KEY",
         "ollama": "",
     }
     env_key = env_vars.get(args.provider, "")
@@ -109,30 +113,34 @@ def main():
     # AI provider
     ai_group = parser.add_argument_group("AI provider")
     ai_group.add_argument("--provider", default="openrouter",
-                          choices=["anthropic", "openai", "openrouter", "ollama"],
+                          choices=["anthropic", "openai", "openrouter", "gemini", "deepseek", "groq", "manualai", "ollama"],
                           help="AI provider (default: openrouter). Use 'ollama' for local LLM.")
     ai_group.add_argument("--mcq-model", default="",
-                          help="MCQ generation model (or 'auto' to try --mcq-models)")
+                          help="MCQ generation model (or 'priority_list' to try --mcq-models)")
     ai_group.add_argument("--mcq-models", default="",
-                          help="Comma-separated priority model list for --mcq-model auto. "
+                          help="Comma-separated priority model list for --mcq-model priority_list. "
                                "Runtime-reloadable via HTML2MCQ_MCQ_MODELS env var.")
     ai_group.add_argument("--api-key", default="",
-                          help="API key. Falls back to OPENROUTER_API_KEY / ANTHROPIC_API_KEY / OPENAI_API_KEY env var.")
+                          help="API key. Falls back to OPENROUTER_API_KEY / ANTHROPIC_API_KEY / OPENAI_API_KEY / GEMINI_API_KEY / DEEPSEEK_API_KEY / GROQ_API_KEY / MANUALAI_API_KEY env var.")
     ai_group.add_argument("--ollama-base-url", default="http://localhost:11434/v1",
                           help="Ollama API base URL (default: http://localhost:11434/v1). "
                                "Only used when --provider ollama.")
+    ai_group.add_argument("--manualai-base-url", default="",
+                          help="Custom OpenAI-compatible API base URL. "
+                               "Only used when --provider manualai. Falls back to MANUALAI_BASE_URL env var.")
 
     # OCR / image
     ocr_group = parser.add_argument_group("OCR & image processing")
-    ocr_group.add_argument("--ocr-model", default="pytesseract",
-                           help="OCR backend: 'pytesseract', 'auto', or any OpenRouter model ID "
-                                "(e.g. 'openai/gpt-4o'). (default: pytesseract)")
+    ocr_group.add_argument("--ocr-model", default="",
+                           help="OCR backend: AI model ID (e.g. 'google/gemini-2.5-flash') or 'priority_list'. "
+                                "Required for 'twostep' and 'onestep'.")
     ocr_group.add_argument("--ocr-models", default="",
-                           help="Comma-separated priority model list for --ocr-model auto. "
+                           help="Comma-separated priority model list for --ocr-model priority_list. "
                                 "E.g. 'gpt-4o,gemma-27b,gemma-12b,pytesseract'")
-    ocr_group.add_argument("--method", default="twostep", choices=["twostep", "images2mcq"],
-                           help="Image processing: 'twostep' (OCR->MCQ) or 'images2mcq' (vision direct). "
-                                "(default: twostep)")
+    ocr_group.add_argument("--method", choices=["auto", "twostep", "tesseract", "onestep"],
+                           required=True,
+                           help="Processing method: 'auto' (smart choice), 'twostep' (AI OCR->MCQ), "
+                                "'tesseract' (Local OCR->MCQ), or 'onestep' (vision direct).")
     ocr_group.add_argument("--save-ocr-path", default="",
                            help="File path to save OCR text when method=twostep")
     ocr_group.add_argument("--prompt-log-path", default="",
@@ -150,7 +158,7 @@ def main():
     out_group = parser.add_argument_group("Output")
     out_group.add_argument("--output", "-o", default="",
                            help="Output file (.json or .txt). Default: stdout")
-    out_group.add_argument("--format", choices=["json", "pretty"], default="pretty",
+    out_group.add_argument("--format", choices=["json", "pretty", "aiken", "moodle"], default="pretty",
                            help="Output format (default: pretty)")
 
     args = parser.parse_args()
@@ -208,6 +216,7 @@ def main():
             pdf_backend=args.pdf_backend,
             pdf_scanned_max_pages=args.scanned_max_pages,
             ollama_base_url=args.ollama_base_url,
+            manualai_base_url=args.manualai_base_url,
         )
     except ValueError as e:
         print(f"Configuration error: {e}", file=sys.stderr)
@@ -286,6 +295,10 @@ def main():
 
     if args.format == "json":
         output = mcq_set.to_json()
+    elif args.format == "aiken":
+        output = mcq_set.to_aiken()
+    elif args.format == "moodle":
+        output = mcq_set.to_moodle_xml()
     else:
         output = mcq_set.to_pretty_str()
 

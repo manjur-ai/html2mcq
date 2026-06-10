@@ -5,7 +5,7 @@ Backend:
 1. PyMuPDF — default, fast, no setup, handles clean digital PDFs
 
 Auto-detection routing:
-  When backend="pymupdf" (or "auto"), the extractor detects the PDF type:
+  When backend="pymupdf" (or "priority_list"), the extractor detects the PDF type:
   - "text" → extracts via PyMuPDF
   - "scanned" → renders pages as PNG images → vision API (GPT-4o mini / Gemma / pytesseract)
   - "mixed" → combines text extraction + scanned page OCR
@@ -328,7 +328,7 @@ class PDFExtractor:
     "auto_detect" — (default) detect PDF type and route automatically
     "pymupdf"     — force PyMuPDF only (no image fallback)
     "image"       — treat all PDFs as scanned images, render & OCR every page
-    "auto"        — alias for "auto_detect"
+    "priority_list"        — alias for "auto_detect"
 
     Scanned PDF pipeline
     --------------------
@@ -364,7 +364,7 @@ class PDFExtractor:
         Parameters
         ----------
         backend : str
-            "auto_detect" (default) | "pymupdf" | "image" | "auto"
+            "auto_detect" (default) | "pymupdf" | "image" | "priority_list"
         chunk_size : int
             Characters per ContentBlock chunk.
         chunk_overlap : int
@@ -374,7 +374,7 @@ class PDFExtractor:
         timeout : int
             HTTP timeout for downloading PDFs.
         scanned_backend : str
-            Backend for scanned/mixed PDF pages: "pytesseract" | "auto" | any model ID.
+            Backend for scanned/mixed PDF pages: "pytesseract" | "priority_list" | any model ID.
         scanned_max_pages : int
             Max pages to render as images for scanned PDFs (0 = unlimited).
         vision_provider : str
@@ -490,6 +490,41 @@ class PDFExtractor:
 
     # ── Enrich ───────────────────────────────────────────────────────────────
 
+    def render_blocks_to_images(
+        self, blocks: List[ContentBlock]
+    ) -> List[ContentBlock]:
+        """
+        Walk a list of ContentBlocks, find all pdf blocks, download and
+        render them to PNG images. Returns image blocks with base64 data.
+        """
+        import base64
+        result: List[ContentBlock] = []
+        for block in blocks:
+            if block.type != "pdf" or not block.content:
+                result.append(block)
+                continue
+
+            try:
+                if block.content.startswith("http"):
+                    pdf_bytes = _fetch_bytes(block.content, timeout=self.timeout)
+                else:
+                    # Treat as local path if file:// or relative
+                    p = block.content.replace("file://", "")
+                    pdf_bytes = Path(p).read_bytes()
+
+                pngs = _render_pdf_pages_to_pngs(pdf_bytes, max_pages=self.scanned_max_pages)
+                for i, png in enumerate(pngs):
+                    b64 = base64.b64encode(png).decode("utf-8")
+                    result.append(ContentBlock(
+                        type="image",
+                        content=f"Rendered Page {i+1}",
+                        metadata={"image_data": b64, "source": block.content}
+                    ))
+            except Exception as e:
+                print(f"  [html2mcq] ⚠ Failed to render PDF {block.content}: {e}")
+                result.append(block)
+        return result
+
     def enrich_blocks(
         self, blocks: List[ContentBlock], replace: bool = True
     ) -> List[ContentBlock]:
@@ -539,7 +574,7 @@ class PDFExtractor:
         if not pngs:
             return []
 
-        if self.scanned_backend == "auto":
+        if self.scanned_backend == "priority_list":
             text = self._ocr_scanned_via_auto(pngs)
         elif self.scanned_backend == "pytesseract":
             text = self._ocr_scanned_via_pytesseract(pngs)
@@ -638,7 +673,7 @@ class PDFExtractor:
                                           max_pages=self.scanned_max_pages)
             if pngs:
                 from .image_ocr import _ocr_vision_api
-                if self.scanned_backend == "auto":
+                if self.scanned_backend == "priority_list":
                     scanned_content = self._ocr_scanned_via_auto(pngs)
                 elif self.scanned_backend == "pytesseract":
                     scanned_content = self._ocr_scanned_via_pytesseract(pngs)
@@ -734,43 +769,32 @@ class PDFExtractor:
     def _ocr_scanned_via_auto(self, pngs: List[bytes],
                                models: Optional[List[str]] = None) -> str:
         """Try each model in *models* (or self._ocr_models) priority order until one succeeds."""
-        from .image_ocr import _ocr_vision_api, _ocr_pytesseract
+        from .image_ocr import _ocr_vision_api, _ocr_pytesseract, parse_operator_model
 
         for model in models or self._ocr_models:
-            if model.lower() == "pytesseract":
-                try:
-                    texts = []
-                    for img_bytes in pngs:
-                        text = _ocr_pytesseract(img_bytes, lang=self.ocr_lang)
-                        if text.strip():
-                            texts.append(text.strip())
-                    if texts:
-                        result = "\n\n".join(texts)
-                        print(f"  [html2mcq] ✓ {model}: {len(result)} chars")
-                        return result
-                except Exception as e:
-                    print(f"  [html2mcq] ⚠ {model} failed: {str(e)[:120]}")
-                    continue
-            else:
-                try:
-                    result = _ocr_vision_api(
-                        pngs, model=model,
-                        api_key=self.vision_api_key, provider=self.vision_provider,
-                    )
-                    if result:
-                        print(f"  [html2mcq] ✓ {model}: {len(result)} chars")
-                        return result
-                except Exception as e:
-                    err_msg = str(e)
-                    no_balance = any(
-                        kw in err_msg.lower()
-                        for kw in ("insufficient", "balance", "quota", "credits", "402", "payment")
-                    )
-                    if no_balance:
-                        print(f"  [html2mcq] ⚠ {model}: insufficient balance")
-                    else:
-                        print(f"  [html2mcq] ⚠ {model} failed: {err_msg[:120]}")
-                    continue
+            current_model = parse_operator_model(model, self.vision_provider)
+            if not current_model:
+                continue
+
+            try:
+                result = _ocr_vision_api(
+                    pngs, model=current_model,
+                    api_key=self.vision_api_key, provider=self.vision_provider,
+                )
+                if result:
+                    print(f"  [html2mcq] ✓ {current_model}: {len(result)} chars")
+                    return result
+            except Exception as e:
+                err_msg = str(e)
+                no_balance = any(
+                    kw in err_msg.lower()
+                    for kw in ("insufficient", "balance", "quota", "credits", "402", "payment")
+                )
+                if no_balance:
+                    print(f"  [html2mcq] ⚠ {current_model}: insufficient balance")
+                else:
+                    print(f"  [html2mcq] ⚠ {current_model} failed: {err_msg[:120]}")
+                continue
         return ""
 
     def _make_blocks(
@@ -802,7 +826,7 @@ class PDFExtractor:
     # ── Private helpers ───────────────────────────────────────────────────────
 
     def _make_backend(self, name: str):
-        if name in ("pymupdf", "auto_detect", "auto"):
+        if name in ("pymupdf", "auto_detect", "priority_list"):
             return _PyMuPDFBackend()
         if name == "image":
             return None

@@ -94,6 +94,60 @@ class MCQSet:
             lines.append("")
         return "\n".join(lines)
 
+    def to_aiken(self) -> str:
+        """Returns the set in Aiken format (simple text format for LMS)."""
+        blocks = []
+        for q in self.questions:
+            lines = [q.question_html]
+            for i, opt in enumerate(q.options):
+                lines.append(f"{chr(65+i)}) {opt}")
+            # Aiken only supports single answer officially, but we take the first
+            ans_idx = q.answers[0] if q.answers else 0
+            lines.append(f"ANSWER: {chr(65+ans_idx)}")
+            blocks.append("\n".join(lines))
+        return "\n\n".join(blocks)
+
+    def to_moodle_xml(self) -> str:
+        """Returns the set in Moodle XML format."""
+        import xml.etree.ElementTree as ET
+        from xml.dom import minidom
+
+        root = ET.Element("quiz")
+        for i, q in enumerate(self.questions):
+            question = ET.SubElement(root, "question", {"type": "multichoice"})
+            
+            name = ET.SubElement(question, "name")
+            ET.SubElement(name, "text").text = f"Q{i+1}: {self.page_title[:40]}"
+            
+            qtext = ET.SubElement(question, "questiontext", {"format": "html"})
+            ET.SubElement(qtext, "text").text = f"<![CDATA[{q.question_html}]]>"
+            
+            ET.SubElement(question, "single").text = "false" if q.multi else "true"
+            ET.SubElement(question, "shuffleanswers").text = "true"
+            ET.SubElement(question, "answernumbering").text = "abc"
+            
+            if q.explanation:
+                feedback = ET.SubElement(question, "generalfeedback", {"format": "html"})
+                ET.SubElement(feedback, "text").text = f"<![CDATA[{q.explanation}]]>"
+
+            # Calculate fraction for multiple answers
+            num_correct = len(q.answers)
+            fraction = 100.0 / num_correct if num_correct > 0 else 100.0
+
+            for idx, opt in enumerate(q.options):
+                is_correct = idx in q.answers
+                ans = ET.SubElement(question, "answer", {
+                    "fraction": str(fraction if is_correct else 0),
+                    "format": "plain_text"
+                })
+                ET.SubElement(ans, "text").text = opt
+                
+        # Pretty print
+        xml_str = ET.tostring(root, encoding="utf-8")
+        parsed = minidom.parseString(xml_str)
+        # Un-escape CDATA manually because minidom/ET might escape '&lt;' etc.
+        return parsed.toprettyxml(indent="  ").replace("&lt;", "<").replace("&gt;", ">")
+
     def filter_by_difficulty(self, difficulty: str) -> "MCQSet":
         filtered = [q for q in self.questions if q.difficulty.lower() == difficulty.lower()]
         return MCQSet(

@@ -12,12 +12,50 @@ from pathlib import Path
 from typing import List, Optional, Tuple, Union
 
 import base64 as _base64
+import random
+
+def _retry_with_backoff(func, max_retries=3, initial_delay=1, factor=2, jitter=0.1):
+    """Retries a function with exponential backoff.
+    Handles typical transient errors like 429 (Rate Limit) or 503 (Overloaded).
+    """
+    delay = initial_delay
+    last_err = None
+    for i in range(max_retries + 1):
+        try:
+            return func()
+        except Exception as e:
+            last_err = e
+            msg = str(e).lower()
+            is_transient = any(kw in msg for kw in ("429", "rate limit", "quota", "503", "overloaded", "timeout"))
+            if not is_transient or i == max_retries:
+                raise e
+            
+            # Wait with jitter
+            sleep_time = delay * (1 + jitter * random.random())
+            print(f"  [html2mcq] ⚠ Rate limited or overloaded. Retrying in {sleep_time:.1f}s... (Attempt {i+1}/{max_retries})")
+            time.sleep(sleep_time)
+            delay *= factor
+    raise last_err
 
 from .extractor import ContentExtractor
 from .models import ContentBlock, MCQQuestion, MCQSet
 from .prompts import build_system_prompt, build_user_prompt
 from .pdf import PDFExtractor, _render_pdf_pages_to_pngs, _render_specific_pages, _parse_page_range, _fetch_bytes
 from .image_ocr import ImageOCRExtractor, _download_image
+
+
+def _parse_operator_model(model_str: str, current_provider: str) -> Optional[str]:
+    if not model_str:
+        return None
+    if model_str.startswith("("):
+        match = re.match(r"^\(([^)]+)\)/(.*)$", model_str)
+        if match:
+            provider_prefix, actual_model = match.groups()
+            if provider_prefix.lower() == current_provider.lower():
+                return actual_model
+            else:
+                return None
+    return model_str
 
 
 # ── AI backend registry ───────────────────────────────────────────────────────
@@ -38,7 +76,10 @@ class _AnthropicBackend:
         self.client = anthropic.Anthropic(api_key=api_key)
         self.mcq_model = mcq_model or self.DEFAULT_MODEL
 
-    def complete(self, system: str, user: str, max_tokens: int) -> str:
+    def complete(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
+        return _retry_with_backoff(lambda: self._complete_raw(system, user, max_tokens))
+
+    def _complete_raw(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
         msg = self.client.messages.create(
             model=self.mcq_model,
             max_tokens=max_tokens,
@@ -64,7 +105,10 @@ class _OpenAIBackend:
         self.client = openai.OpenAI(api_key=api_key)
         self.mcq_model = mcq_model or self.DEFAULT_MODEL
 
-    def complete(self, system: str, user: str, max_tokens: int) -> str:
+    def complete(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
+        return _retry_with_backoff(lambda: self._complete_raw(system, user, max_tokens))
+
+    def _complete_raw(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
         resp = self.client.chat.completions.create(
             model=self.mcq_model,
             max_tokens=max_tokens,
@@ -102,7 +146,10 @@ class _OpenRouterBackend:
         )
         self.mcq_model = mcq_model or self.DEFAULT_MODEL
 
-    def complete(self, system: str, user: str, max_tokens: int) -> str:
+    def complete(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
+        return _retry_with_backoff(lambda: self._complete_raw(system, user, max_tokens))
+
+    def _complete_raw(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
         resp = self.client.chat.completions.create(
             model=self.mcq_model,
             max_tokens=max_tokens,
@@ -138,7 +185,152 @@ class _OllamaBackend:
         )
         self.mcq_model = mcq_model or self.DEFAULT_MODEL
 
-    def complete(self, system: str, user: str, max_tokens: int) -> str:
+    def complete(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
+        return _retry_with_backoff(lambda: self._complete_raw(system, user, max_tokens))
+
+    def _complete_raw(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
+        resp = self.client.chat.completions.create(
+            model=self.mcq_model,
+            max_tokens=max_tokens,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        )
+        return resp.choices[0].message.content or ""
+
+
+class _GeminiBackend:
+    """Uses Google's Gemini API via its OpenAI-compatible endpoint."""
+
+    DEFAULT_MODEL = "gemini-2.5-flash-lite"
+
+    def __init__(self, api_key: str, mcq_model: str):
+        try:
+            import openai
+        except ImportError as e:
+            raise ImportError(
+                "Missing 'openai' package. Install it with: pip install openai\n"
+                f"  Original error: {e}"
+            ) from e
+        self.client = openai.OpenAI(
+            api_key=api_key,
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        )
+        self.mcq_model = mcq_model or self.DEFAULT_MODEL
+
+    def complete(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
+        return _retry_with_backoff(lambda: self._complete_raw(system, user, max_tokens))
+
+    def _complete_raw(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
+        resp = self.client.chat.completions.create(
+            model=self.mcq_model,
+            max_tokens=max_tokens,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        )
+        return resp.choices[0].message.content or ""
+
+
+class _DeepSeekBackend:
+    """Uses DeepSeek's API via its OpenAI-compatible endpoint."""
+
+    DEFAULT_MODEL = "deepseek-chat"
+
+    def __init__(self, api_key: str, mcq_model: str):
+        try:
+            import openai
+        except ImportError as e:
+            raise ImportError(
+                "Missing 'openai' package. Install it with: pip install openai\n"
+                f"  Original error: {e}"
+            ) from e
+        self.client = openai.OpenAI(
+            api_key=api_key,
+            base_url="https://api.deepseek.com",
+        )
+        self.mcq_model = mcq_model or self.DEFAULT_MODEL
+
+    def complete(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
+        return _retry_with_backoff(lambda: self._complete_raw(system, user, max_tokens))
+
+    def _complete_raw(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
+        resp = self.client.chat.completions.create(
+            model=self.mcq_model,
+            max_tokens=max_tokens,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        )
+        return resp.choices[0].message.content or ""
+
+
+class _GroqBackend:
+    """Uses Groq's API via its OpenAI-compatible endpoint."""
+
+    DEFAULT_MODEL = "llama-3.3-70b-versatile"
+
+    def __init__(self, api_key: str, mcq_model: str):
+        try:
+            import openai
+        except ImportError as e:
+            raise ImportError(
+                "Missing 'openai' package. Install it with: pip install openai\n"
+                f"  Original error: {e}"
+            ) from e
+        self.client = openai.OpenAI(
+            api_key=api_key,
+            base_url="https://api.groq.com/openai/v1",
+        )
+        self.mcq_model = mcq_model or self.DEFAULT_MODEL
+
+    def complete(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
+        return _retry_with_backoff(lambda: self._complete_raw(system, user, max_tokens))
+
+    def _complete_raw(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
+        resp = self.client.chat.completions.create(
+            model=self.mcq_model,
+            max_tokens=max_tokens,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        )
+        return resp.choices[0].message.content or ""
+
+
+class _ManualAIBackend:
+    """Uses a manual custom API via its OpenAI-compatible endpoint."""
+
+    DEFAULT_MODEL = "custom-model"
+
+    def __init__(self, api_key: str, mcq_model: str, manualai_base_url: str = ""):
+        try:
+            import openai
+        except ImportError as e:
+            raise ImportError(
+                "Missing 'openai' package. Install it with: pip install openai\n"
+                f"  Original error: {e}"
+            ) from e
+        base_url = manualai_base_url or os.environ.get("MANUALAI_BASE_URL", "").strip()
+        if not base_url:
+            raise ValueError(
+                "For 'manualai' provider, you must set the MANUALAI_BASE_URL environment variable "
+                "or pass manualai_base_url pointing to your OpenAI-compatible endpoint."
+            )
+        self.client = openai.OpenAI(
+            api_key=api_key,
+            base_url=base_url,
+        )
+        self.mcq_model = mcq_model or self.DEFAULT_MODEL
+
+    def complete(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
+        return _retry_with_backoff(lambda: self._complete_raw(system, user, max_tokens))
+
+    def _complete_raw(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
         resp = self.client.chat.completions.create(
             model=self.mcq_model,
             max_tokens=max_tokens,
@@ -158,9 +350,17 @@ def _make_backend(provider: str, api_key: str, mcq_model: str, **kwargs):
         return _OpenAIBackend(api_key, mcq_model)
     if provider == "openrouter":
         return _OpenRouterBackend(api_key, mcq_model)
+    if provider == "gemini":
+        return _GeminiBackend(api_key, mcq_model)
+    if provider == "deepseek":
+        return _DeepSeekBackend(api_key, mcq_model)
+    if provider == "groq":
+        return _GroqBackend(api_key, mcq_model)
+    if provider == "manualai":
+        return _ManualAIBackend(api_key, mcq_model, **kwargs)
     if provider == "ollama":
         return _OllamaBackend(api_key, mcq_model, **kwargs)
-    raise ValueError(f"Unknown provider '{provider}'. Choose: anthropic | openai | openrouter | ollama")
+    raise ValueError(f"Unknown provider '{provider}'. Choose: anthropic | openai | openrouter | gemini | deepseek | groq | manualai | ollama")
 
 
 class _OverrideContext:
@@ -191,9 +391,24 @@ class _OverrideContext:
             if hasattr(self.gen, 'pdf_extractor'):
                 self._saved['pdf_extractor.scanned_backend'] = self.gen.pdf_extractor.scanned_backend
                 self.gen.pdf_extractor.scanned_backend = ocr_val
-        if self.mcq_model is not None:
+        # ── Vision Model Override ──
+        # Determine which model to use for vision tasks (OCR / Direct Vision MCQ)
+        # Priority: ocr_model (if AI) > mcq_model (if not auto)
+        
+        # Resolve prefixes for overrides
+        ovr_ocr = _parse_operator_model(self.ocr_model, self.gen.provider)
+        ovr_mcq = _parse_operator_model(self.mcq_model, self.gen.provider)
+
+        target_vis_model = None
+        if ovr_ocr is not None and ovr_ocr != "pytesseract" and ovr_ocr != "":
+            target_vis_model = ovr_ocr
+        elif ovr_mcq is not None and ovr_mcq not in ("", "priority_list"):
+            target_vis_model = ovr_mcq
+
+        if target_vis_model is not None:
             _DEFAULT_VISION = "google/gemini-2.5-flash-lite"
-            _vis_model = self.mcq_model if self.mcq_model not in ("", "auto") else _DEFAULT_VISION
+            _vis_model = target_vis_model if target_vis_model not in ("", "priority_list") else _DEFAULT_VISION
+            
             if hasattr(self.gen, 'image_ocr_extractor'):
                 self._saved['image_ocr_extractor.vision_model'] = self.gen.image_ocr_extractor.vision_model
                 self.gen.image_ocr_extractor.vision_model = _vis_model
@@ -203,9 +418,22 @@ class _OverrideContext:
             if hasattr(self.gen, '_vision_model'):
                 self._saved['_vision_model'] = self.gen._vision_model
                 self.gen._vision_model = _vis_model
+
+        # ── Backend Override ──
+        if ovr_mcq is not None:
+            effective_mcq_model = ovr_mcq
+            # Implement method-specific fallbacks for overrides
+            if not effective_mcq_model:
+                if self.gen.method in ("twostep", "tesseract"):
+                    if ovr_ocr:
+                        effective_mcq_model = ovr_ocr
+                    else:
+                        effective_mcq_model = getattr(self.gen, "mcq_model", "")
+            
             _key = getattr(self.gen, '_resolved_api_key', None) or "ollama"
             self._saved['backend'] = self.gen.backend
-            self.gen.backend = _make_backend(self.gen.provider, _key, self.mcq_model)
+            self.gen.backend = _make_backend(self.gen.provider, _key, effective_mcq_model)
+
         return self
 
     def __exit__(self, *args):
@@ -248,22 +476,22 @@ class MCQGenerator:
     mcq_model : str
         Model for MCQ generation (both text-based and vision-based).
         A specific model ID (e.g. "openai/gpt-4o", "google/gemini-2.5-flash-lite"),
-        or "auto" to try mcq_model_list until one succeeds.
+        or "priority_list" to try mcq_model_list until one succeeds.
         Also controls the vision model used by ``from_image_paths`` /
         ``from_image_urls``. Defaults to the provider's default model when empty.
     mcq_model_list : list of str, optional
-        Priority-ordered model list for mcq_model="auto".
+        Priority-ordered model list for mcq_model="priority_list".
         Runtime-reloadable via HTML2MCQ_MCQ_MODELS env var (comma-separated).
 
     --- OCR / Vision ---
     ocr_model : str
         OCR backend for extracting text from images in HTML pages.
-        "pytesseract" (default, needs tesseract binary) | "auto" (tries priority list)
+        "pytesseract" (default, needs tesseract binary) | "priority_list" (tries priority list)
         | any OpenRouter model ID (e.g. "google/gemini-2.5-flash-lite").
         Does *not* affect ``from_image_paths`` / ``from_image_urls`` — those
         use ``mcq_model`` for the vision model.
     ocr_models : list of str, optional
-        Priority-ordered model list for ocr_model="auto".
+        Priority-ordered model list for ocr_model="priority_list".
         Entries are OpenRouter model IDs or "pytesseract".
         Falls back to HTML2MCQ_OCR_MODELS env var, then built-in default.
     ocr_fallback : bool
@@ -273,9 +501,11 @@ class MCQGenerator:
 
     --- Generation Options ---
     method : str
-        Image processing method:
-        - ``"twostep"`` (default) — OCR images to text, then generate MCQs from text
-        - ``"images2mcq"`` — send images directly to vision model for MCQ generation
+        Processing method (MANDATORY):
+        - ``"auto"`` — intelligently choose the best method
+        - ``"onestep"`` — send images directly to vision model for MCQ generation
+        - ``"twostep"`` — use vision model as OCR engine, then generate MCQs from text
+        - ``"tesseract"`` — use local Tesseract for OCR, then generate MCQs from text
     batch_size : int
         Number of questions to request per API call (default 10).
     max_tokens : int
@@ -306,6 +536,10 @@ class MCQGenerator:
         "anthropic": "ANTHROPIC_API_KEY",
         "openai": "OPENAI_API_KEY",
         "openrouter": "OPENROUTER_API_KEY",
+        "gemini": "GEMINI_API_KEY",
+        "deepseek": "DEEPSEEK_API_KEY",
+        "groq": "GROQ_API_KEY",
+        "manualai": "MANUALAI_API_KEY",
         "ollama": "",
     }
 
@@ -315,11 +549,11 @@ class MCQGenerator:
         provider: str = "openrouter",
         mcq_model: str = "",
         mcq_model_list: Optional[List[str]] = None,
-        ocr_model: str = "pytesseract",
+        ocr_model: str = "",
         ocr_models: Optional[List[str]] = None,
         ocr_fallback: bool = True,
         ocr_lang: str = "eng",
-        method: str = "twostep",
+        method: str = "",
         batch_size: int = 10,
         max_tokens: int = 4096,
         custom_instructions: Optional[str] = None,
@@ -333,14 +567,84 @@ class MCQGenerator:
         **backend_kwargs,
     ):
         self.provider = provider.lower()
+        
+        # ── Resolve operator-aware single models ─────────────────────────
+        ocr_model = _parse_operator_model(ocr_model, self.provider) or ""
+        mcq_model = _parse_operator_model(mcq_model, self.provider) or ""
+        
+        if ocr_model.lower() in ("pytesseract", "tesseract"):
+            raise ValueError(
+                "Logical Error: 'pytesseract' is an internal engine, not an AI model name. "
+                "Do not pass it to 'ocr_model'. For local OCR, use 'method=\"tesseract\"'."
+            )
+        if mcq_model.lower() in ("pytesseract", "tesseract"):
+            raise ValueError(
+                "Logical Error: 'pytesseract' is not an AI model and cannot generate MCQs. "
+                "Please provide a valid AI model name for 'mcq_model'."
+            )
+
         self.mcq_model = mcq_model
         self.mcq_model_list = mcq_model_list
+        if not method:
+            raise ValueError(
+                "Logical Error: The 'method' parameter is mandatory. "
+                "Choose: auto | twostep | tesseract | onestep"
+            )
         self.method = method.lower()
-        if self.method not in ("twostep", "images2mcq"):
-            raise ValueError(f"Unknown method '{method}'. Choose: twostep | images2mcq")
+        if self.method not in ("auto", "twostep", "tesseract", "onestep"):
+            raise ValueError(f"Unknown method '{method}'. Choose: auto | twostep | tesseract | onestep")
+        
+        # ── Resolve 'auto' method ────────────────────────────────────────
+        if self.method == "auto":
+            if not mcq_model and not ocr_model:
+                raise ValueError(
+                    "Logical Error: As both 'mcq_model' and 'ocr_model' are missing, "
+                    "not able to resolve 'auto' method. Please provide at least one AI model "
+                    "via '--mcq-model' or '--ocr-model'."
+                )
+            # If ocr_model (the reader) is missing, we must use local OCR
+            if not ocr_model and mcq_model:
+                self.method = "tesseract"
+        
+        # ── Enforce ocr_model rules and handle method splitting ──────────
+        if self.method == "tesseract":
+            orig_ocr_model = ocr_model
+            # Extraction backend is ALWAYS pytesseract
+            ocr_model = "pytesseract"
+            
+            # Validation: at least one AI model must be provided for MCQ generation
+            if not self.mcq_model and not orig_ocr_model:
+                 raise ValueError(
+                     "Logical Error: For 'tesseract' method, you must provide an AI model for MCQ generation "
+                     "via either 'mcq_model' or 'ocr_model' (e.g. --ocr-model gemini-2.0-flash)."
+                 )
+            # Fallback: if mcq_model missing, use the user's ocr_model value
+            if not self.mcq_model:
+                self.mcq_model = orig_ocr_model
+
+        elif self.method == "twostep":
+            if not ocr_model:
+                raise ValueError(
+                    "Logical Error: For 'twostep' method, 'ocr_model' is mandatory and must be "
+                    "set to a vision-capable AI model."
+                )
+            # Fallback: if mcq_model missing, use ocr_model
+            if not self.mcq_model:
+                self.mcq_model = ocr_model
+
+        elif self.method == "onestep":
+            if not ocr_model:
+                raise ValueError(
+                    "Logical Error: For 'onestep' method, the 'ocr_model' parameter is mandatory "
+                    "and must be set to a vision-capable AI model (e.g. 'google/gemini-2.5-flash')."
+                )
+            # Fallback: if mcq_model missing, use ocr_model
+            if not self.mcq_model:
+                self.mcq_model = ocr_model
+
         if self.provider == "ollama":
             _key = "ollama"
-            if self.mcq_model in ("", "auto"):
+            if self.mcq_model in ("", "priority_list"):
                 self.mcq_model = _OllamaBackend.DEFAULT_MODEL
         else:
             _key = api_key or os.environ.get(self.ENV_KEYS.get(self.provider, ""), "")
@@ -349,6 +653,14 @@ class MCQGenerator:
                     f"No API key supplied. Pass api_key= or set "
                     f"{self.ENV_KEYS.get(self.provider, 'YOUR_API_KEY')} env var."
                 )
+        
+        # ── Final mcq_model Fallbacks ────────────────────────────────────
+        if not self.mcq_model or self.mcq_model == "priority_list":
+            if self.method in ("twostep", "tesseract") and ocr_model:
+                # We only fall back if ocr_model is an AI model (not Tesseract)
+                if ocr_model != "pytesseract":
+                    self.mcq_model = ocr_model
+
         self._resolved_api_key = _key
         self.backend = _make_backend(self.provider, _key, self.mcq_model, **backend_kwargs)
         if api_key_override:
@@ -356,15 +668,21 @@ class MCQGenerator:
             self.backend = _make_backend(self.provider, api_key_override, self.mcq_model, **backend_kwargs)
         self.batch_size = max(1, batch_size)
         self.max_tokens = max_tokens
+        self.timeout = backend_kwargs.get("timeout", 30)
         self.extractor = ContentExtractor(**(extractor_kwargs or {}))
 
         # ── Derive downstream params ─────────────────────────────────────
         image_ocr_backend = ocr_model
         pdf_scanned_backend = ocr_model
-        # For vision-based paths (images2mcq, from_image_*, scanned PDFs),
-        # derive the vision model from mcq_model (same parameter for all MCQ generation)
+        
+        # For vision-based tasks (onestep, twostep OCR, scanned PDFs),
+        # determine the primary vision model.
+        # PRIORITY: ocr_model (if AI) > mcq_model (if not auto) > default
         _DEFAULT_VISION = "google/gemini-2.5-flash-lite"
-        if self.mcq_model and self.mcq_model not in ("auto",):
+        
+        if ocr_model and ocr_model != "pytesseract":
+            _vision_model = ocr_model
+        elif self.mcq_model and self.mcq_model not in ("priority_list", ""):
             _vision_model = self.mcq_model
         else:
             _vision_model = _DEFAULT_VISION
@@ -374,7 +692,7 @@ class MCQGenerator:
         self.image_ocr_extractor = ImageOCRExtractor(
             backend=image_ocr_backend,
             lang=ocr_lang,
-            vision_provider="openrouter",
+            vision_provider=self.provider,
             vision_model=_vision_model,
             vision_free_model=_vision_free_model,
             vision_api_key=_key,
@@ -388,7 +706,7 @@ class MCQGenerator:
             chunk_size=pdf_chunk_size,
             scanned_backend=pdf_scanned_backend,
             scanned_max_pages=pdf_scanned_max_pages,
-            vision_provider="openrouter",
+            vision_provider=self.provider,
             vision_model=_vision_model,
             vision_free_model=_vision_free_model,
             vision_api_key=_key,
@@ -442,12 +760,25 @@ class MCQGenerator:
         """Generate MCQs from a raw HTML string."""
         with self._with_overrides(api_key_override, prompt_log_path,
                                   ocr_model=ocr_model, mcq_model=mcq_model):
+            use_vision = self.method == "onestep"
+            m_display = "onestep (Hybrid)" if use_vision else "twostep"
+            print(f"  [html2mcq] Method: {m_display} (Text/HTML detected)")
+            
             title, blocks = self.extractor.from_html(html, base_url=base_url)
             if enrich_pdfs:
-                blocks = self.pdf_extractor.enrich_blocks(blocks)
+                if use_vision:
+                    # Hybrid path: render PDF pages to images for direct vision prompt
+                    blocks = self.pdf_extractor.render_blocks_to_images(blocks)
+                else:
+                    blocks = self.pdf_extractor.enrich_blocks(blocks)
 
-            if enrich_images and self.method == "twostep":
-                blocks = self.image_ocr_extractor.enrich_blocks(blocks)
+            if enrich_images:
+                if use_vision:
+                    # Hybrid path: download images for direct vision prompt
+                    blocks = self.image_ocr_extractor.download_images(blocks)
+                else:
+                    # Standard path: OCR images into text
+                    blocks = self.image_ocr_extractor.enrich_blocks(blocks, replace=True)
 
             all_qs, _ = self._generate(
                 blocks=blocks,
@@ -459,13 +790,6 @@ class MCQGenerator:
                 custom_instructions=custom_instructions,
                 show_progress=show_progress,
             )
-
-            if enrich_images and self.method == "images2mcq":
-                img_blocks = [b for b in blocks if b.type == "image" and b.content]
-                remaining = n - len(all_qs)
-                if img_blocks and remaining > 0:
-                    vision_qs = self._vision_mcq(img_blocks, n=remaining, page_title=title)
-                    all_qs.extend(vision_qs)
 
             return self._build_mcq_set(all_qs, n, title, base_url or None, blocks)
 
@@ -582,15 +906,28 @@ class MCQGenerator:
     ) -> MCQSet:
         with self._with_overrides(api_key_override, prompt_log_path,
                                   ocr_model=ocr_model, mcq_model=mcq_model):
+            use_vision = self.method == "onestep"
+            m_display = "onestep (Hybrid)" if use_vision else "twostep"
+            print(f"  [html2mcq] Method: {m_display} (Text/HTML detected)")
+            
             title, blocks = self.extractor.from_url(url)
             if page_title:
                 title = page_title
 
             if enrich_pdfs:
-                blocks = self.pdf_extractor.enrich_blocks(blocks)
+                if use_vision:
+                    # Hybrid path: render PDF pages to images for direct vision prompt
+                    blocks = self.pdf_extractor.render_blocks_to_images(blocks)
+                else:
+                    blocks = self.pdf_extractor.enrich_blocks(blocks)
 
-            if enrich_images and self.method == "twostep":
-                blocks = self.image_ocr_extractor.enrich_blocks(blocks)
+            if enrich_images:
+                if use_vision:
+                    # Hybrid path: download images for direct vision prompt
+                    blocks = self.image_ocr_extractor.download_images(blocks)
+                else:
+                    # Standard path: OCR images into text
+                    blocks = self.image_ocr_extractor.enrich_blocks(blocks, replace=True)
 
             all_qs, _ = self._generate(
                 blocks=blocks,
@@ -602,13 +939,6 @@ class MCQGenerator:
                 custom_instructions=custom_instructions,
                 show_progress=show_progress,
             )
-
-            if enrich_images and self.method == "images2mcq":
-                img_blocks = [b for b in blocks if b.type == "image" and b.content]
-                remaining = n - len(all_qs)
-                if img_blocks and remaining > 0:
-                    vision_qs = self._vision_mcq(img_blocks, n=remaining, page_title=title)
-                    all_qs.extend(vision_qs)
 
             return self._build_mcq_set(all_qs, n, title, url, blocks)
 
@@ -631,7 +961,20 @@ class MCQGenerator:
             if isinstance(urls, str):
                 urls = [urls]
             blocks = [ContentBlock(type="image", content=u) for u in urls]
-            if self.method == "twostep":
+            
+            use_vision = self.method in ("priority_list", "onestep")
+            if use_vision:
+                print(f"  [html2mcq] Method: onestep (Pure image detected)")
+                all_qs = self._vision_mcq(
+                    blocks, n=n, page_title=title,
+                    difficulty_mix=difficulty_mix,
+                    focus_topics=focus_topics,
+                    custom_instructions=custom_instructions,
+                )
+                return self._build_mcq_set(all_qs, n, title, urls[0] if urls else None, blocks)
+            else:
+                m_name = "tesseract" if self.method == "tesseract" else "twostep"
+                print(f"  [html2mcq] Method: {m_name} (Forced)")
                 return self._image_twostep(
                     paths=None, urls=urls, blocks=blocks,
                     n=n, title=title,
@@ -640,13 +983,6 @@ class MCQGenerator:
                     custom_instructions=custom_instructions,
                     show_progress=show_progress,
                 )
-            all_qs = self._vision_mcq(
-                blocks, n=n, page_title=title,
-                difficulty_mix=difficulty_mix,
-                focus_topics=focus_topics,
-                custom_instructions=custom_instructions,
-            )
-            return self._build_mcq_set(all_qs, n, title, urls[0] if urls else None, blocks)
 
     def from_image_paths(
         self,
@@ -672,7 +1008,20 @@ class MCQGenerator:
                 b64 = _base64.b64encode(data).decode("utf-8")
                 data_uri = f"data:image/png;base64,{b64}"
                 blocks.append(ContentBlock(type="image", content=data_uri))
-            if self.method == "twostep":
+            
+            use_vision = self.method in ("priority_list", "onestep")
+            if use_vision:
+                print(f"  [html2mcq] Method: onestep (Pure image detected)")
+                all_qs = self._vision_mcq(
+                    blocks, n=n, page_title=title,
+                    difficulty_mix=difficulty_mix,
+                    focus_topics=focus_topics,
+                    custom_instructions=custom_instructions,
+                )
+                return self._build_mcq_set(all_qs, n, title, paths[0] if paths else None, blocks)
+            else:
+                m_name = "tesseract" if self.method == "tesseract" else "twostep"
+                print(f"  [html2mcq] Method: {m_name} (Forced)")
                 return self._image_twostep(
                     paths=paths, urls=None, blocks=blocks,
                     n=n, title=title,
@@ -681,13 +1030,6 @@ class MCQGenerator:
                     custom_instructions=custom_instructions,
                     show_progress=show_progress,
                 )
-            all_qs = self._vision_mcq(
-                blocks, n=n, page_title=title,
-                difficulty_mix=difficulty_mix,
-                focus_topics=focus_topics,
-                custom_instructions=custom_instructions,
-            )
-            return self._build_mcq_set(all_qs, n, title, paths[0] if paths else None, blocks)
 
     def from_pdf_urls(
         self,
@@ -711,10 +1053,29 @@ class MCQGenerator:
             page_nums = _parse_page_range(pages)
             title = pdf_title or (urls[0].split("/")[-1].replace(".pdf", "").replace("-", " ").replace("_", " ").title()
                                   if len(urls) == 1 else "PDFs")
-            if self.method == "images2mcq":
+            all_bytes = []
+            for url in urls:
+                all_bytes.append(_fetch_bytes(url, timeout=self.timeout, user_agent=self.extractor.user_agent))
+            
+            # Detect if all are scanned
+            is_all_scanned = all(self.pdf_extractor.detect_scan_type(b) == "scanned" for b in all_bytes)
+            
+            use_vision = (is_all_scanned and self.method == "auto") or (self.method == "onestep")
+            if use_vision:
+                desc = "Scanned PDF" if is_all_scanned else "Forced vision"
+                print(f"  [html2mcq] Method: onestep ({desc} detected)")
+                
+                # Check for native PDF support
+                if self.provider in ("gemini", "openrouter") and len(all_bytes) == 1:
+                    all_qs = self._vision_mcq_pdf(n=n, page_title=title,
+                                                  difficulty_mix=difficulty_mix,
+                                                  focus_topics=focus_topics,
+                                                  custom_instructions=custom_instructions,
+                                                  pdf_bytes=all_bytes[0])
+                    return self._build_mcq_set(all_qs, n, title, urls[0], [])
+
                 all_pngs: List[bytes] = []
-                for url in urls:
-                    pdf_bytes = _fetch_bytes(url, timeout=30)
+                for pdf_bytes in all_bytes:
                     if page_nums is not None:
                         rendered = _render_specific_pages(pdf_bytes, page_nums, max_pages=self.pdf_extractor.scanned_max_pages)
                     else:
@@ -727,11 +1088,15 @@ class MCQGenerator:
                                               focus_topics=focus_topics,
                                               custom_instructions=custom_instructions)
                 return self._build_mcq_set(all_qs, n, title, urls[0], [])
+
+            m_name = "tesseract" if self.method == "tesseract" else "twostep"
+            desc = "Text PDF" if not is_all_scanned else f"Forced {m_name.upper()}"
+            print(f"  [html2mcq] Method: {m_name} ({desc} detected)")
             all_blocks: List[ContentBlock] = []
-            for url in urls:
-                blocks = self.pdf_extractor.from_url(url, page_numbers=page_nums)
+            for i, pdf_bytes in enumerate(all_bytes):
+                blocks = self.pdf_extractor.from_bytes(pdf_bytes, source_url=urls[i], page_numbers=page_nums)
                 if not blocks:
-                    raise ValueError(f"No text could be extracted from PDF: {url}")
+                    raise ValueError(f"No text could be extracted from PDF: {urls[i]}")
                 all_blocks.extend(blocks)
             if not all_blocks:
                 raise ValueError("No text could be extracted from any PDF")
@@ -774,7 +1139,24 @@ class MCQGenerator:
             page_nums = _parse_page_range(pages)
             title = pdf_title or (Path(paths[0]).stem.replace("-", " ").replace("_", " ").title()
                                   if len(paths) == 1 else "PDFs")
-            if self.method == "images2mcq":
+            # Detect if all are scanned
+            is_all_scanned = all(self.pdf_extractor.detect_scan_type_from_path(p) == "scanned" for p in paths)
+
+            use_vision = (is_all_scanned and self.method == "auto") or (self.method == "onestep")
+            if use_vision:
+                desc = "Scanned PDF" if is_all_scanned else "Forced vision"
+                print(f"  [html2mcq] Method: onestep ({desc} detected)")
+                
+                # Check for native PDF support
+                if self.provider in ("gemini", "openrouter") and len(paths) == 1:
+                    pdf_bytes = Path(paths[0]).read_bytes()
+                    all_qs = self._vision_mcq_pdf(n=n, page_title=title,
+                                                  difficulty_mix=difficulty_mix,
+                                                  focus_topics=focus_topics,
+                                                  custom_instructions=custom_instructions,
+                                                  pdf_bytes=pdf_bytes)
+                    return self._build_mcq_set(all_qs, n, title, f"file://{paths[0]}", [])
+
                 all_pngs: List[bytes] = []
                 for p in paths:
                     pdf_bytes = Path(p).read_bytes()
@@ -790,6 +1172,10 @@ class MCQGenerator:
                                               focus_topics=focus_topics,
                                               custom_instructions=custom_instructions)
                 return self._build_mcq_set(all_qs, n, title, f"file://{paths[0]}", [])
+
+            m_name = "tesseract" if self.method == "tesseract" else "twostep"
+            desc = "Text PDF" if not is_all_scanned else f"Forced {m_name.upper()}"
+            print(f"  [html2mcq] Method: {m_name} ({desc} detected)")
             all_blocks: List[ContentBlock] = []
             for p in paths:
                 blocks = self.pdf_extractor.from_path(p, page_numbers=page_nums)
@@ -832,7 +1218,7 @@ class MCQGenerator:
             parts.append(per_call.strip())
         return "\n".join(parts)
 
-    # ── Vision → MCQ (images2mcq method) ────────────────────────────────────
+    # ── Vision → MCQ (onestep method) ────────────────────────────────────
 
     def _vision_mcq(
         self, img_blocks: List[ContentBlock], n: int, page_title: str,
@@ -853,9 +1239,19 @@ class MCQGenerator:
         except ImportError:
             return []
 
+        # Determine base URL based on provider
+        if self.provider == "openrouter":
+            base_url = "https://openrouter.ai/api/v1"
+        elif self.provider == "openai":
+            base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+        elif self.provider == "ollama":
+            base_url = "http://localhost:11434/v1"
+        else:
+            base_url = None
+
         client = openai.OpenAI(
             api_key=api_key,
-            base_url="https://openrouter.ai/api/v1",
+            base_url=base_url,
         )
 
         # Download images
@@ -904,11 +1300,11 @@ class MCQGenerator:
                           f"Instruction: {content[0]['text']}")
 
         try:
-            resp = client.chat.completions.create(
+            resp = _retry_with_backoff(lambda: client.chat.completions.create(
                 model=self.image_ocr_extractor.vision_model,
                 messages=[{"role": "user", "content": content}],
                 max_tokens=8192,
-            )
+            ))
             raw = (resp.choices[0].message.content or "").strip()
             if not raw:
                 print("  [html2mcq] ⚠ vision model returned empty response")
@@ -919,12 +1315,13 @@ class MCQGenerator:
             return []
 
     def _vision_mcq_pdf(
-        self, pngs: List[bytes], n: int, page_title: str,
+        self, pngs: Optional[List[bytes]] = None, n: int = 1, page_title: str = "",
         difficulty_mix: Optional[str] = None,
         focus_topics: Optional[List[str]] = None,
         custom_instructions: Optional[str] = None,
+        pdf_bytes: Optional[bytes] = None,
     ) -> List[MCQQuestion]:
-        """Send rendered PDF page images directly to a vision model for MCQ generation."""
+        """Send PDF data (either as PNGs or native PDF bytes) to a vision model."""
         api_key = self.image_ocr_extractor.vision_api_key
         if not api_key:
             return []
@@ -934,9 +1331,21 @@ class MCQGenerator:
         except ImportError:
             return []
 
+        # Determine base URL based on provider
+        if self.provider == "openrouter":
+            base_url = "https://openrouter.ai/api/v1"
+        elif self.provider == "openai":
+            base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
+        elif self.provider == "ollama":
+            base_url = "http://localhost:11434/v1"
+        elif self.provider == "gemini":
+            base_url = "https://generativelanguage.googleapis.com/v1beta/openai/"
+        else:
+            base_url = None
+
         client = openai.OpenAI(
             api_key=api_key,
-            base_url="https://openrouter.ai/api/v1",
+            base_url=base_url,
         )
 
         instr_parts = [f"Generate {n} MCQ questions based on the content in these PDF pages."]
@@ -958,25 +1367,43 @@ class MCQGenerator:
             '"answers": [0], "difficulty": "easy|medium|hard", '
             '"explanation": "..."}'
         )
+        
+        # ── Build Multi-modal Content ──
         content: list = [{"type": "text", "text": "\n".join(instr_parts)}]
-        for png in pngs:
-            b64 = _base64.b64encode(png).decode("utf-8")
+        
+        # Try native PDF first for Gemini/OpenRouter if bytes are available
+        use_native = pdf_bytes and self.provider in ("gemini", "openrouter")
+        
+        if use_native:
+            b64_pdf = _base64.b64encode(pdf_bytes).decode("utf-8")
+            # Google/OpenRouter convention for PDF in OpenAI-compatible SDK
             content.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:image/png;base64,{b64}"},
+                "type": "image_url", # Some SDKs use generic type but this often works for blobs
+                "image_url": {"url": f"data:application/pdf;base64,{b64_pdf}"},
             })
+            log_desc = f"Native PDF ({len(pdf_bytes)} bytes)"
+        elif pngs:
+            for png in pngs:
+                b64 = _base64.b64encode(png).decode("utf-8")
+                content.append({
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{b64}"},
+                })
+            log_desc = f"{len(pngs)} rendered pages"
+        else:
+            return []
 
         self._log_prompt("VISION INSTRUCTION",
                           f"Model: {self.image_ocr_extractor.vision_model}\n"
-                          f"Pages: {len(pngs)}\n"
+                          f"Data: {log_desc}\n"
                           f"Instruction: {content[0]['text']}")
 
         try:
-            resp = client.chat.completions.create(
+            resp = _retry_with_backoff(lambda: client.chat.completions.create(
                 model=self.image_ocr_extractor.vision_model,
                 messages=[{"role": "user", "content": content}],
                 max_tokens=8192,
-            )
+            ))
             raw = (resp.choices[0].message.content or "").strip()
             if not raw:
                 print("  [html2mcq] ⚠ vision model returned empty response")
@@ -1075,9 +1502,13 @@ class MCQGenerator:
             raw = list(mcq_model_list)
         else:
             raw = [
-                "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
-                "openai/gpt-oss-120b:free",
-                "google/gemma-4-31b-it:free",
+                "(openrouter)/nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+                "(openrouter)/openai/gpt-oss-120b:free",
+                "(openrouter)/google/gemma-4-31b-it:free",
+                "(gemini)/gemini-2.5-flash-lite",
+                "(openai)/gpt-4o-mini",
+                "(deepseek)/deepseek-chat",
+                "(groq)/llama-3.3-70b-versatile",
             ]
         # Known max_output tokens per model (from OpenRouter API)
         # Models ordered by speed (fastest first) on free tier
@@ -1129,12 +1560,16 @@ class MCQGenerator:
     def set_api_key(provider: str, key: str) -> None:
         """Set the API key env var for a provider only if not already set.
 
-        Providers: openrouter, anthropic, openai, ollama
+        Providers: openrouter, anthropic, openai, gemini, deepseek, groq, manualai, ollama
         """
         env_map = {
             "openrouter": "OPENROUTER_API_KEY",
             "anthropic": "ANTHROPIC_API_KEY",
             "openai": "OPENAI_API_KEY",
+            "gemini": "GEMINI_API_KEY",
+            "deepseek": "DEEPSEEK_API_KEY",
+            "groq": "GROQ_API_KEY",
+            "manualai": "MANUALAI_API_KEY",
             "ollama": "",
         }
         env_var = env_map.get(provider.lower())
@@ -1178,11 +1613,14 @@ class MCQGenerator:
                 print(f"  [html2mcq] Batch {_batch_count}/{_total_batches}: "
                       f"{len(questions)} questions", file=__import__('sys').stderr)
 
-        # ── Resolve MCQ model (supports auto mode) ──
-        if self.mcq_model == "auto":
+        # ── Resolve MCQ model (supports priority_list mode) ──
+        if self.mcq_model == "priority_list":
             model_list = self._resolve_mcq_model_list(self.mcq_model_list)
             for entry in model_list:
-                model_name = entry["model"]
+                model_name = _parse_operator_model(entry["model"], self.provider)
+                if not model_name:
+                    continue
+
                 model_tokens = entry["max_tokens"]
                 self.backend.mcq_model = model_name
                 est_tokens_per_q = 500
@@ -1190,7 +1628,8 @@ class MCQGenerator:
                 batch_max_tokens = min(model_tokens, requested_output)
                 max_per_call = max(1, batch_max_tokens // est_tokens_per_q)
                 batch_n = min(remaining, max_per_call)
-                user_prompt = build_user_prompt(
+                
+                text_prompt = build_user_prompt(
                     blocks=blocks,
                     n=batch_n,
                     difficulty_mix=difficulty_mix,
@@ -1198,10 +1637,22 @@ class MCQGenerator:
                     page_title=page_title,
                     custom_instructions=self._resolve_instructions(custom_instructions),
                 )
+                
+                # Hybrid Vision: detect images with data
+                user_content: Union[str, List[dict]] = text_prompt
+                image_data_blocks = [b for b in blocks if b.type == "image" and b.metadata.get("image_data")]
+                if self.method == "onestep" and image_data_blocks:
+                    user_content = [{"type": "text", "text": text_prompt}]
+                    for b in image_data_blocks:
+                        user_content.append({
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{b.metadata['image_data']}"}
+                        })
+
                 self._log_prompt("SYSTEM", system_prompt)
-                self._log_prompt("USER", user_prompt)
+                self._log_prompt("USER", str(user_content) if isinstance(user_content, list) else user_content)
                 try:
-                    raw = self.backend.complete(system_prompt, user_prompt, batch_max_tokens)
+                    raw = self.backend.complete(system_prompt, user_content, batch_max_tokens)
                     batch = self._parse_response(raw)
                 except Exception as e:
                     print(f"  [html2mcq] \u26a0 MCQ model '{model_name}' failed: {e}")
@@ -1225,7 +1676,7 @@ class MCQGenerator:
 
         while remaining > 0:
             batch_n = min(remaining, self.batch_size)
-            user_prompt = build_user_prompt(
+            text_prompt = build_user_prompt(
                 blocks=blocks,
                 n=batch_n,
                 difficulty_mix=difficulty_mix,
@@ -1233,9 +1684,21 @@ class MCQGenerator:
                 page_title=page_title,
                 custom_instructions=self._resolve_instructions(custom_instructions),
             )
+            
+            # Hybrid Vision: detect images with data
+            user_content: Union[str, List[dict]] = text_prompt
+            image_data_blocks = [b for b in blocks if b.type == "image" and b.metadata.get("image_data")]
+            if self.method == "onestep" and image_data_blocks:
+                user_content = [{"type": "text", "text": text_prompt}]
+                for b in image_data_blocks:
+                    user_content.append({
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{b.metadata['image_data']}"}
+                    })
+
             self._log_prompt("SYSTEM", system_prompt)
-            self._log_prompt("USER", user_prompt)
-            raw = self.backend.complete(system_prompt, user_prompt, self.max_tokens)
+            self._log_prompt("USER", str(user_content) if isinstance(user_content, list) else user_content)
+            raw = self.backend.complete(system_prompt, user_content, self.max_tokens)
             batch_questions = self._parse_response(raw)
             all_questions.extend(batch_questions)
             _report(batch_questions)
@@ -1252,10 +1715,20 @@ class MCQGenerator:
         summary = self._build_summary(blocks)
         return all_questions, summary
 
+    @staticmethod
+    def _build_summary(blocks: List[ContentBlock]) -> str:
+        counts = {}
+        for b in blocks:
+            counts[b.type] = counts.get(b.type, 0) + 1
+        parts = [f"{v} {k}{'s' if v>1 else ''}" for k, v in sorted(counts.items())]
+        return "Content: " + ", ".join(parts)
+
     def _parse_response(self, raw: str) -> List[MCQQuestion]:
         """Parse AI JSON response into MCQQuestion objects."""
         # Strip any accidental markdown fences
         text = raw.strip()
+        if not text:
+            return []
         if text.startswith("```"):
             text = re.sub(r"^```[a-z]*\n?", "", text)
             text = re.sub(r"\n?```$", "", text)
@@ -1306,12 +1779,153 @@ class MCQGenerator:
                 continue  # Skip malformed items
         return questions
 
-    @staticmethod
-    def _build_summary(blocks: List[ContentBlock]) -> str:
-        counts = {}
-        for b in blocks:
-            counts[b.type] = counts.get(b.type, 0) + 1
-        parts = [f"{v} {k}{'s' if v>1 else ''}" for k, v in sorted(counts.items())]
-        return "Content: " + ", ".join(parts)
+    # ── Async Backends ───────────────────────────────────────────────────────────
+
+class _AsyncAnthropicBackend:
+    def __init__(self, api_key: str, mcq_model: str):
+        try:
+            import anthropic
+        except ImportError:
+            raise ImportError("pip install anthropic")
+        self.client = anthropic.AsyncAnthropic(api_key=api_key)
+        self.mcq_model = mcq_model or "claude-opus-4-6"
+
+    async def complete(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
+        msg = await self.client.messages.create(
+            model=self.mcq_model,
+            max_tokens=max_tokens,
+            system=system,
+            messages=[{"role": "user", "content": user}],
+        )
+        return msg.content[0].text
+
+
+class _AsyncOpenAIBackend:
+    def __init__(self, api_key: str, mcq_model: str, base_url: Optional[str] = None, **kwargs):
+        try:
+            import openai
+        except ImportError:
+            raise ImportError("pip install openai")
+        self.client = openai.AsyncOpenAI(api_key=api_key, base_url=base_url, **kwargs)
+        self.mcq_model = mcq_model or "gpt-4o"
+
+    async def complete(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
+        resp = await self.client.chat.completions.create(
+            model=self.mcq_model,
+            max_tokens=max_tokens,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        )
+        return resp.choices[0].message.content or ""
+
+
+def _make_async_backend(provider: str, api_key: str, mcq_model: str, **kwargs):
+    provider = provider.lower()
+    if provider == "anthropic":
+        return _AsyncAnthropicBackend(api_key, mcq_model)
+    
+    # All others are OpenAI-compatible
+    base_urls = {
+        "openai": None,
+        "openrouter": "https://openrouter.ai/api/v1",
+        "gemini": "https://generativelanguage.googleapis.com/v1beta/openai/",
+        "deepseek": "https://api.deepseek.com",
+        "groq": "https://api.groq.com/openai/v1",
+        "manualai": kwargs.get("manualai_base_url") or os.environ.get("MANUALAI_BASE_URL", ""),
+        "ollama": kwargs.get("ollama_base_url") or "http://localhost:11434/v1",
+    }
+    
+    if provider not in base_urls:
+        raise ValueError(f"Unknown async provider '{provider}'")
+        
+    return _AsyncOpenAIBackend(api_key, mcq_model, base_url=base_urls[provider], **kwargs)
+
+
+class AsyncMCQGenerator(MCQGenerator):
+    """Asynchronous version of MCQGenerator."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Replace the sync backend with an async one
+        self.backend = _make_async_backend(
+            self.provider, self._resolved_api_key, self.mcq_model, **kwargs
+        )
+
+    async def from_url(self, url: str, **kwargs) -> MCQSet:
+        loop = asyncio.get_running_loop()
+        use_vision = self.method == "onestep"
+        
+        # 1. Extraction (Sync -> Thread)
+        title, blocks = await loop.run_in_executor(None, lambda: self.extractor.from_url(url))
+        
+        # 2. PDF enrichment (Sync -> Thread)
+        if kwargs.get("enrich_pdfs", True):
+            blocks = await loop.run_in_executor(None, lambda: self.pdf_extractor.enrich_blocks(blocks))
+            
+        # 3. Image enrichment (Sync -> Thread)
+        if kwargs.get("enrich_images", True):
+            if use_vision:
+                blocks = await loop.run_in_executor(None, lambda: self.image_ocr_extractor.download_images(blocks))
+            else:
+                blocks = await loop.run_in_executor(None, lambda: self.image_ocr_extractor.enrich_blocks(blocks))
+        
+        return await self._generate_async(blocks, kwargs.get("n", 999), title, url, **kwargs)
+
+    async def from_html(self, html: str, **kwargs) -> MCQSet:
+        loop = asyncio.get_running_loop()
+        use_vision = self.method == "onestep"
+        title, blocks = await loop.run_in_executor(None, lambda: self.extractor.from_html(html, base_url=kwargs.get("base_url", "")))
+        
+        if kwargs.get("enrich_pdfs", True):
+            blocks = await loop.run_in_executor(None, lambda: self.pdf_extractor.enrich_blocks(blocks))
+        if kwargs.get("enrich_images", True):
+            if use_vision:
+                blocks = await loop.run_in_executor(None, lambda: self.image_ocr_extractor.download_images(blocks))
+            else:
+                blocks = await loop.run_in_executor(None, lambda: self.image_ocr_extractor.enrich_blocks(blocks))
+                
+        return await self._generate_async(blocks, kwargs.get("n", 999), title, kwargs.get("base_url"), **kwargs)
+
+    async def from_image_paths(self, paths: Union[str, List[str]], **kwargs) -> MCQSet:
+        if isinstance(paths, str): paths = [paths]
+        blocks = []
+        for p in paths:
+            data = Path(p).read_bytes()
+            b64 = _base64.b64encode(data).decode("utf-8")
+            blocks.append(ContentBlock(type="image", content=f"data:image/png;base64,{b64}", 
+                                       metadata={"image_data": b64 if self.method == "onestep" else None}))
+        
+        if self.method == "onestep":
+             return await self._generate_async(blocks, kwargs.get("n", 999), "Images", f"file://{paths[0]}", **kwargs)
+        else:
+            # Twostep/Tesseract requires sync OCR
+            loop = asyncio.get_running_loop()
+            # For simplicity in this async POC, we run the twostep sync path in a thread
+            return await loop.run_in_executor(None, lambda: super(AsyncMCQGenerator, self).from_image_paths(paths, **kwargs))
+
+    async def _generate_async(self, blocks: List[ContentBlock], n: int, page_title: str, source_url: Optional[str], **kwargs) -> MCQSet:
+        system_prompt = build_system_prompt()
+        remaining = n
+        all_questions = []
+        
+        # Simplified async generation loop (similar to _generate)
+        # For production, this should handle batching and priority_list just like the sync version
+        batch_n = min(remaining, self.batch_size)
+        text_prompt = build_user_prompt(blocks, batch_n, page_title=page_title, 
+                                       custom_instructions=self._resolve_instructions(kwargs.get("custom_instructions")))
+        
+        user_content = text_prompt
+        image_data_blocks = [b for b in blocks if b.type == "image" and b.metadata.get("image_data")]
+        if self.method == "onestep" and image_data_blocks:
+            user_content = [{"type": "text", "text": text_prompt}]
+            for b in image_data_blocks:
+                user_content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b.metadata['image_data']}"}})
+
+        raw = await self.backend.complete(system_prompt, user_content, self.max_tokens)
+        all_questions = self._parse_response(raw)
+        
+        return self._build_mcq_set(all_questions, n, page_title, source_url, blocks)
 
 

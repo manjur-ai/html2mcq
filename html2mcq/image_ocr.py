@@ -2,16 +2,15 @@
 ImageOCRExtractor: Downloads images found in HTML and extracts text via OCR / vision API.
 
 Backends:
-1. "pytesseract" — Tesseract OCR (lightweight, needs tesseract binary).
-2. "auto" — tries models in priority order until one succeeds.
-             Default priority: gemini-2.5-flash-lite → gemma-27b → gemma-12b → gpt-4o → pytesseract.
+1. "priority_list" — tries models in priority order until one succeeds.
+             Default priority: gemini-2.5-flash-lite → gemma-27b → gemma-12b → gpt-4o.
              Override via ocr_models param or HTML2MCQ_OCR_MODELS env var.
-3. Any OpenRouter model ID (e.g. "google/gemini-2.5-flash-lite", "openai/gpt-4o") —
-   sends images directly to that vision model via OpenRouter.
+2. Any AI model ID (e.g. "google/gemini-2.5-flash-lite", "openai/gpt-4o") —
+   sends images directly to that vision model.
 
 Usage
 -----
-ocr = ImageOCRExtractor(backend="auto")
+ocr = ImageOCRExtractor(backend="priority_list")
 enriched = ocr.enrich_blocks(extracted_blocks)
 
 ocr = ImageOCRExtractor(backend="openai/gpt-4o")
@@ -22,6 +21,7 @@ from __future__ import annotations
 import base64
 import io
 import os
+import re
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -72,17 +72,37 @@ def _download_image(url: str, timeout: int = 15, max_bytes: int = 10 * 1024 * 10
 _DEFAULT_VISION_MODEL = "google/gemini-2.5-flash-lite"
 _FREE_VISION_MODEL = "google/gemma-3-12b-it"
 
-# Default priority list for ocr_model="auto".
+# Default priority list for ocr_model="priority_list".
 # Entries can be full OpenRouter model IDs or "pytesseract" for local Tesseract OCR.
 # Override via ocr_models parameter or HTML2MCQ_OCR_MODELS env var (comma-separated).
 _DEFAULT_OCR_PRIORITY = [
-    "google/gemini-2.5-flash-lite",
-    "google/gemma-3-27b-it",
-    "google/gemma-3-12b-it",
-    "openai/gpt-4o",
-    "pytesseract",
+    "(gemini)/gemini-2.5-flash-lite",
+    "(openrouter)/google/gemini-2.5-flash-lite",
+    "(openrouter)/google/gemma-3-27b-it",
+    "(openrouter)/google/gemma-3-12b-it",
+    "(openai)/gpt-4o",
 ]
 _OCR_MODELS_ENV_VAR = "HTML2MCQ_OCR_MODELS"
+
+def parse_operator_model(model_str: str, current_provider: str) -> Optional[str]:
+    """
+    Resolve a model string that may have an operator prefix like '(openai)/gpt-4o'.
+    If a prefix is present and matches current_provider, returns the model_id.
+    If a prefix is present and DOES NOT match, returns None.
+    If no prefix is present, returns model_str (universal fallback).
+    """
+    if not model_str:
+        return None
+    if model_str.startswith("("):
+        match = re.match(r"^\(([^)]+)\)/(.*)$", model_str)
+        if match:
+            provider_prefix, actual_model = match.groups()
+            if provider_prefix.lower() == current_provider.lower():
+                return actual_model
+            else:
+                return None
+    return model_str
+
 
 def _ocr_vision_api(
     image_bytes_list: List[bytes],
@@ -258,20 +278,20 @@ class ImageOCRExtractor:
     Backends
     --------
     "pytesseract" — Tesseract OCR (lightweight, needs tesseract binary).
-    "auto"        — Tries models in priority order until one succeeds.
+    "priority_list"        — Tries models in priority order until one succeeds.
                     Default: gpt-4o → gemma-27b → gemma-12b → pytesseract.
                     Override via ocr_models param or HTML2MCQ_OCR_MODELS env var.
     Any model ID — Sends images directly to that OpenRouter model (e.g. "openai/gpt-4o").
 
     Usage
     -----
-    ocr = ImageOCRExtractor(backend="auto")
+    ocr = ImageOCRExtractor(backend="priority_list")
     blocks = ocr.enrich_blocks(extracted_blocks)
     """
 
     def __init__(
         self,
-        backend: str = "auto",
+        backend: str = "priority_list",
         min_text_length: int = 15,
         max_image_size_mb: int = 10,
         timeout: int = 15,
@@ -287,7 +307,7 @@ class ImageOCRExtractor:
         Parameters
         ----------
         backend : str
-            "pytesseract" | "auto" | any OpenRouter model ID (e.g. "openai/gpt-4o").
+            "pytesseract" | "priority_list" | any OpenRouter model ID (e.g. "openai/gpt-4o").
         min_text_length : int
             Minimum characters of extracted text to consider useful.
         max_image_size_mb : int
@@ -307,7 +327,7 @@ class ImageOCRExtractor:
         ocr_fallback : bool
             Fall back to Tesseract when vision API fails (vision_api backend).
         ocr_models : list[str], optional
-            Priority-ordered model list for backend="auto".
+            Priority-ordered model list for backend="priority_list".
             Entries are OpenRouter model IDs or "pytesseract".
             Falls back to HTML2MCQ_OCR_MODELS env var, then built-in default.
         """
@@ -322,7 +342,7 @@ class ImageOCRExtractor:
         self.vision_api_key = vision_api_key or os.environ.get("OPENROUTER_API_KEY", "")
         self.ocr_fallback = ocr_fallback
 
-        # Parse the priority-ordered model list for "auto" backend
+        # Parse the priority-ordered model list for "priority_list" backend
         self.ocr_models = self._resolve_ocr_models(ocr_models)
 
     @staticmethod
@@ -338,8 +358,51 @@ class ImageOCRExtractor:
             return [m.strip() for m in env.split(",") if m.strip()]
         return list(_DEFAULT_OCR_PRIORITY)
 
-        # Parse the priority-ordered model list for "auto" backend
+        # Parse the priority-ordered model list for "priority_list" backend
         self.ocr_models = self._resolve_ocr_models(ocr_models)
+
+    def download_images(
+        self, blocks: List[ContentBlock]
+    ) -> List[ContentBlock]:
+        """
+        Walk a list of ContentBlocks, find all image blocks, and download
+        them in parallel. Stores the raw bytes as base64 in metadata['image_data'].
+        """
+        # ── Collect image blocks to download ──
+        image_tasks: List[Tuple[int, str]] = []
+        for i, block in enumerate(blocks):
+            if block.type == "image" and block.content:
+                image_tasks.append((i, block.content))
+
+        if not image_tasks:
+            return list(blocks)
+
+        # ── Download all images in parallel ──
+        downloaded_data: Dict[int, bytes] = {}
+        with ThreadPoolExecutor(max_workers=min(len(image_tasks), 10)) as pool:
+            fut_to_idx = {
+                pool.submit(_download_image, url, timeout=self.timeout): idx
+                for idx, url in image_tasks
+            }
+            for fut in as_completed(fut_to_idx):
+                idx = fut_to_idx[fut]
+                try:
+                    data = fut.result()
+                    if data:
+                        downloaded_data[idx] = data
+                except Exception:
+                    pass
+
+        # ── Rebuild block list with base64 data ──
+        result: List[ContentBlock] = []
+        for i, block in enumerate(blocks):
+            if i in downloaded_data:
+                b64 = base64.b64encode(downloaded_data[i]).decode("utf-8")
+                block.metadata["image_data"] = b64
+                result.append(block)
+            else:
+                result.append(block)
+        return result
 
     def enrich_blocks(
         self, blocks: List[ContentBlock], replace: bool = True
@@ -407,7 +470,7 @@ class ImageOCRExtractor:
 
     def _ocr_bytes(self, image_bytes: bytes) -> str:
         """OCR a single image from raw PNG bytes."""
-        if self.backend == "auto":
+        if self.backend == "priority_list":
             return self._ocr_auto([image_bytes])
         elif self.backend == "pytesseract":
             return _ocr_pytesseract(image_bytes, lang=self.lang)
@@ -449,7 +512,7 @@ class ImageOCRExtractor:
         if not image_bytes_list:
             return ""
 
-        if self.backend == "auto":
+        if self.backend == "priority_list":
             return self._ocr_auto(image_bytes_list)
         elif self.backend == "pytesseract":
             texts = [_ocr_pytesseract(img, lang=self.lang) for img in image_bytes_list]
@@ -494,38 +557,27 @@ class ImageOCRExtractor:
                    models: Optional[List[str]] = None) -> str:
         """Try each model in *models* (or self.ocr_models) priority order until one succeeds."""
         for model in models or self.ocr_models:
-            if model.lower() == "pytesseract":
-                try:
-                    texts = []
-                    for img_bytes in image_bytes_list:
-                        text = _ocr_pytesseract(img_bytes, lang=self.lang)
-                        if text.strip():
-                            texts.append(text.strip())
-                    if texts:
-                        result = "\n\n".join(texts)
-                        print(f"  [html2mcq] ✓ {model}: {len(result)} chars")
-                        return result
-                except Exception as e:
-                    print(f"  [html2mcq] ⚠ {model} failed: {str(e)[:120]}")
-                    continue
-            else:
-                try:
-                    result = _ocr_vision_api(
-                        image_bytes_list, model=model,
-                        api_key=self.vision_api_key, provider=self.vision_provider,
-                    )
-                    if result:
-                        print(f"  [html2mcq] ✓ {model}: {len(result)} chars")
-                        return result
-                except Exception as e:
-                    err_msg = str(e)
-                    no_balance = any(
-                        kw in err_msg.lower()
-                        for kw in ("insufficient", "balance", "quota", "credits", "402", "payment")
-                    )
-                    if no_balance:
-                        print(f"  [html2mcq] ⚠ {model}: insufficient balance")
-                    else:
-                        print(f"  [html2mcq] ⚠ {model} failed: {err_msg[:120]}")
-                    continue
+            current_model = parse_operator_model(model, self.vision_provider)
+            if not current_model:
+                continue
+
+            try:
+                result = _ocr_vision_api(
+                    image_bytes_list, model=current_model,
+                    api_key=self.vision_api_key, provider=self.vision_provider,
+                )
+                if result:
+                    print(f"  [html2mcq] ✓ {current_model}: {len(result)} chars")
+                    return result
+            except Exception as e:
+                err_msg = str(e)
+                no_balance = any(
+                    kw in err_msg.lower()
+                    for kw in ("insufficient", "balance", "quota", "credits", "402", "payment")
+                )
+                if no_balance:
+                    print(f"  [html2mcq] ⚠ {current_model}: insufficient balance")
+                else:
+                    print(f"  [html2mcq] ⚠ {current_model} failed: {err_msg[:120]}")
+                continue
         return ""
