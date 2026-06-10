@@ -213,6 +213,7 @@ def _ocr_vision_with_fallback(
     provider: str = "openrouter",
     fallback_to_tesseract: bool = True,
     tesseract_lang: str = "eng",
+    max_tokens: int = 4096,
 ) -> str:
     """
     Try primary vision model, fall back to free model, then pytesseract.
@@ -225,6 +226,7 @@ def _ocr_vision_with_fallback(
             return _ocr_vision_api(
                 image_bytes_list, model=primary_model,
                 api_key=api_key, provider=provider,
+                max_tokens=max_tokens,
             )
         except Exception as e:
             err_msg = str(e)
@@ -234,9 +236,10 @@ def _ocr_vision_with_fallback(
                 for kw in ("insufficient", "balance", "quota", "credits", "402", "payment")
             )
             if no_balance:
-                print(f"  [html2mcq] ⚠ {primary_model}: insufficient balance")
+                print(f"  [html2mcq] \u26a0 ({provider}) '{primary_model}': insufficient balance")
             else:
-                print(f"  [html2mcq] ⚠ {primary_model} failed: {err_msg[:120]}")
+                err_msg = str(e).split('\n')[0][:100]
+                print(f"  [html2mcq] \u26a0 ({provider}) '{primary_model}' failed: {err_msg}")
 
     # 2. Free fallback model
     if free_model and free_model != primary_model:
@@ -244,9 +247,11 @@ def _ocr_vision_with_fallback(
             return _ocr_vision_api(
                 image_bytes_list, model=free_model,
                 api_key=api_key, provider=provider,
+                max_tokens=max_tokens,
             )
         except Exception as e:
-            print(f"  [html2mcq] ⚠ {free_model} fallback failed: {str(e)[:120]}")
+            err_msg = str(e).split('\n')[0][:100]
+            print(f"  [html2mcq] \u26a0 ({provider}) '{free_model}' fallback failed: {err_msg}")
 
     # 3. pytesseract last resort
     if fallback_to_tesseract:
@@ -323,6 +328,7 @@ class ImageOCRExtractor:
         ocr_fallback: bool = True,
         ocr_models: Optional[List[str]] = None,
         available_keys: Optional[dict] = None,
+        max_tokens: int = 4096,
     ):
         """
         Parameters
@@ -351,6 +357,8 @@ class ImageOCRExtractor:
             Priority-ordered model list for backend="priority_list".
             Entries are OpenRouter model IDs or "pytesseract".
             Falls back to HTML2MCQ_OCR_MODELS env var, then built-in default.
+        max_tokens : int
+            Max tokens for vision API response.
         """
         self.backend = backend.lower()
         self.min_text_length = min_text_length
@@ -363,6 +371,7 @@ class ImageOCRExtractor:
         self.vision_api_key = vision_api_key or os.environ.get("OPENROUTER_API_KEY", "")
         self.ocr_fallback = ocr_fallback
         self.available_keys = available_keys or {}
+        self.max_tokens = max_tokens
 
         # Parse the priority-ordered model list for "priority_list" backend
         self.ocr_models = self._resolve_ocr_models(ocr_models)
@@ -379,9 +388,6 @@ class ImageOCRExtractor:
         if env:
             return [m.strip() for m in env.split(",") if m.strip()]
         return list(_DEFAULT_OCR_PRIORITY)
-
-        # Parse the priority-ordered model list for "priority_list" backend
-        self.ocr_models = self._resolve_ocr_models(ocr_models)
 
     def download_images(
         self, blocks: List[ContentBlock]
@@ -511,7 +517,7 @@ class ImageOCRExtractor:
                     [image_bytes],
                     model=current_model,
                     api_key=p_key,
-                    provider=p_target,
+                    max_tokens=self.max_tokens,
                 )
                 if result.strip():
                     return result
@@ -551,7 +557,7 @@ class ImageOCRExtractor:
                     image_bytes_list,
                     model=current_model,
                     api_key=p_key,
-                    provider=p_target,
+                    max_tokens=self.max_tokens,
                 )
                 if result.strip():
                     return result
@@ -593,19 +599,21 @@ class ImageOCRExtractor:
                 result = _ocr_vision_api(
                     image_bytes_list, model=current_model,
                     api_key=p_key, provider=p_target,
+                    max_tokens=self.max_tokens,
                 )
                 if result:
                     print(f"  [html2mcq] ✓ ({p_target}) {current_model}: {len(result)} chars")
                     return result
             except Exception as e:
                 err_msg = str(e)
+                # Common "no balance" indicators
                 no_balance = any(
                     kw in err_msg.lower()
                     for kw in ("insufficient", "balance", "quota", "credits", "402", "payment")
                 )
                 if no_balance:
-                    print(f"  [html2mcq] ⚠ ({p_target}) {current_model}: insufficient balance")
+                    print(f"  [html2mcq] \u26a0 ({p_target}) '{current_model}': insufficient balance")
                 else:
-                    print(f"  [html2mcq] ⚠ ({p_target}) {current_model} failed: {err_msg[:120]}")
+                    err_msg_line = err_msg.split('\n')[0][:100]
+                    print(f"  [html2mcq] \u26a0 ({p_target}) '{current_model}' failed: {err_msg_line}")
                 continue
-        return ""

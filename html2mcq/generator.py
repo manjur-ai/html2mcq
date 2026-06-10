@@ -26,7 +26,8 @@ def _retry_with_backoff(func, max_retries=3, initial_delay=1, factor=2, jitter=0
         except Exception as e:
             last_err = e
             msg = str(e).lower()
-            is_transient = any(kw in msg for kw in ("429", "rate limit", "quota", "503", "overloaded", "timeout"))
+            # 402 is credits, 429 is rate limit, 503 is overloaded
+            is_transient = any(kw in msg for kw in ("402", "429", "rate limit", "quota", "503", "overloaded", "timeout", "credits"))
             if not is_transient or i == max_retries:
                 raise e
             
@@ -506,10 +507,12 @@ class MCQGenerator:
         | any OpenRouter model ID (e.g. "google/gemini-2.5-flash-lite").
         Does *not* affect ``from_image_paths`` / ``from_image_urls`` — those
         use ``mcq_model`` for the vision model.
+    ocr_model_list : list of str, optional
+        Priority-ordered model list for ocr_model="priority_list".
+        Allows defining a custom fallback order for OCR tasks.
     ocr_models : list of str, optional
         Priority-ordered model list for ocr_model="priority_list".
-        Entries are OpenRouter model IDs or "pytesseract".
-        Falls back to HTML2MCQ_OCR_MODELS env var, then built-in default.
+        Backward compatibility alias for ocr_model_list.
     ocr_fallback : bool
         If True (default), fall back to Tesseract OCR when vision API fails.
     ocr_lang : str
@@ -567,6 +570,7 @@ class MCQGenerator:
         mcq_model: str = "",
         mcq_model_list: Optional[List[str]] = None,
         ocr_model: str = "",
+        ocr_model_list: Optional[List[str]] = None,
         ocr_models: Optional[List[str]] = None,
         ocr_fallback: bool = True,
         ocr_lang: str = "eng",
@@ -630,6 +634,7 @@ class MCQGenerator:
 
         self.mcq_model = mcq_model
         self.mcq_model_list = mcq_model_list
+        self.ocr_models = ocr_model_list or ocr_models
         if not method:
             raise ValueError(
                 "Logical Error: The 'method' parameter is mandatory. "
@@ -747,6 +752,7 @@ class MCQGenerator:
             ocr_fallback=ocr_fallback,
             ocr_models=ocr_models,
             available_keys=self.available_keys,
+            max_tokens=self.max_tokens,
         )
 
         # PDF (text + scanned)
@@ -763,6 +769,7 @@ class MCQGenerator:
             ocr_lang=ocr_lang,
             ocr_models=ocr_models,
             available_keys=self.available_keys,
+            max_tokens=self.max_tokens,
         )
         self.custom_instructions = custom_instructions or ""
         self.prompt_log_path = prompt_log_path
@@ -1364,17 +1371,18 @@ class MCQGenerator:
 
         try:
             resp = _retry_with_backoff(lambda: client.chat.completions.create(
-                model=self.image_ocr_extractor.vision_model,
+                model=model_name,
                 messages=[{"role": "user", "content": content}],
-                max_tokens=8192,
+                max_tokens=self.max_tokens,
             ))
             raw = (resp.choices[0].message.content or "").strip()
             if not raw:
-                print("  [html2mcq] ⚠ vision model returned empty response")
+                print(f"  [html2mcq] \u26a0 ({p_target}) '{model_name}' returned empty response")
                 return []
             return self._parse_response(raw)
         except Exception as e:
-            print(f"  [html2mcq] ⚠ vision MCQ failed: {e}")
+            err_msg = str(e).split('\n')[0][:100]
+            print(f"  [html2mcq] \u26a0 ({p_target}) '{model_name}' failed: {err_msg}")
             return []
 
     def _vision_mcq_pdf(
@@ -1474,17 +1482,18 @@ class MCQGenerator:
 
         try:
             resp = _retry_with_backoff(lambda: client.chat.completions.create(
-                model=self.image_ocr_extractor.vision_model,
+                model=model_name,
                 messages=[{"role": "user", "content": content}],
-                max_tokens=8192,
+                max_tokens=self.max_tokens,
             ))
             raw = (resp.choices[0].message.content or "").strip()
             if not raw:
-                print("  [html2mcq] ⚠ vision model returned empty response")
+                print(f"  [html2mcq] \u26a0 ({p_target}) '{model_name}' returned empty response")
                 return []
             return self._parse_response(raw)
         except Exception as e:
-            print(f"  [html2mcq] ⚠ vision MCQ failed: {e}")
+            err_msg = str(e).split('\n')[0][:100]
+            print(f"  [html2mcq] \u26a0 ({p_target}) '{model_name}' failed: {err_msg}")
             return []
 
     def _image_twostep(
@@ -1741,7 +1750,8 @@ class MCQGenerator:
                     raw = current_backend.complete(system_prompt, user_content, batch_max_tokens)
                     batch = self._parse_response(raw)
                 except Exception as e:
-                    print(f"  [html2mcq] \u26a0 MCQ model ({p_target}) '{model_name}' failed: {e}")
+                    err_msg = str(e).split('\n')[0][:100]
+                    print(f"  [html2mcq] \u26a0 ({p_target}) '{model_name}' failed: {err_msg}")
                     continue
                 if batch:
                     all_questions.extend(batch)
@@ -1800,8 +1810,17 @@ class MCQGenerator:
 
             self._log_prompt("SYSTEM", system_prompt)
             self._log_prompt("USER", str(user_content) if isinstance(user_content, list) else user_content)
-            raw = current_backend.complete(system_prompt, user_content, self.max_tokens)
-            batch_questions = self._parse_response(raw)
+            try:
+                raw = current_backend.complete(system_prompt, user_content, self.max_tokens)
+                batch_questions = self._parse_response(raw)
+            except Exception as e:
+                # Resolve display names for the error message
+                res = _parse_operator_model(self.mcq_model, self.provider, self.available_keys)
+                p_display, m_display = res if res else (self.provider, self.mcq_model)
+                err_msg = str(e).split('\n')[0][:100]
+                print(f"  [html2mcq] \u26a0 ({p_display}) '{m_display}' failed: {err_msg}")
+                break
+
             all_questions.extend(batch_questions)
             _report(batch_questions)
             remaining -= len(batch_questions)
@@ -2069,7 +2088,8 @@ class AsyncMCQGenerator(MCQGenerator):
                         remaining -= len(batch)
                         break
                 except Exception as e:
-                    print(f"  [html2mcq] \u26a0 Async MCQ model ({p_target}) '{model_name}' failed: {e}")
+                    err_msg = str(e).split('\n')[0][:100]
+                    print(f"  [html2mcq] \u26a0 ({p_target}) '{model_name}' failed: {err_msg}")
                     continue
         else:
             while remaining > 0:
@@ -2084,11 +2104,18 @@ class AsyncMCQGenerator(MCQGenerator):
                     for b in image_data_blocks:
                         user_content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b.metadata['image_data']}"}})
 
-                raw = await self.backend.complete(system_prompt, user_content, self.max_tokens)
-                batch = self._parse_response(raw)
-                if not batch: break
-                all_questions.extend(batch)
-                remaining -= len(batch)
+                try:
+                    raw = await self.backend.complete(system_prompt, user_content, self.max_tokens)
+                    batch = self._parse_response(raw)
+                    if not batch: break
+                    all_questions.extend(batch)
+                    remaining -= len(batch)
+                except Exception as e:
+                    res = _parse_operator_model(self.mcq_model, self.provider, self.available_keys)
+                    p_display, m_display = res if res else (self.provider, self.mcq_model)
+                    err_msg = str(e).split('\n')[0][:100]
+                    print(f"  [html2mcq] \u26a0 ({p_display}) '{m_display}' failed: {err_msg}")
+                    break
 
         return self._build_mcq_set(all_questions, n, page_title, source_url, blocks)
 

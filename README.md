@@ -246,8 +246,11 @@ If you set `mcq_model="priority_list"` or `ocr_model="priority_list"`, the tool 
 | `provider` | `"openrouter"` | AI provider (see list). Use `"auto"` for multi-provider routing. |
 | `api_key` | `None` | API key (falls back to ENV vars) |
 | `method` | `""` | **Mandatory**: `"auto"` \| `"onestep"` \| `"twostep"` \| `"tesseract"` |
-| `mcq_model` | `""` | Model for MCQ generation. Falls back to `ocr_model` |
-| `ocr_model` | `""` | Vision/OCR engine. **Mandatory** for `twostep`/`onestep` |
+| `mcq_model` | `""` | Model for MCQ generation. Falls back to `ocr_model`. Use `"priority_list"` for fallback. |
+| `mcq_model_list` | `None` | Custom list of models for `mcq_model="priority_list"`. |
+| `ocr_model` | `""` | Vision/OCR engine. **Mandatory** for `twostep`/`onestep`. Use `"priority_list"` for fallback. |
+| `ocr_model_list` | `None` | Custom list of models for `ocr_model="priority_list"`. |
+| `max_tokens` | `4096` | Max tokens for AI responses. |
 | `manualai_base_url` | `""` | Base URL for the `manualai` provider |
 | `ocr_fallback` | `True` | Fall back to Tesseract if AI OCR fails |
 | `ocr_lang` | `"eng"` | Tesseract language code |

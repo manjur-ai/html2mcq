@@ -1,3 +1,17 @@
+## [3.2.0] - 2026-06-10
+### Added
+- **Configurable `max_tokens`**: Now fully propagated to all vision and OCR tasks.
+- **`ocr_model_list` Support**: Consistent API for defining priority fallback for OCR tasks.
+
+### Fixed
+- **Improved Fallback**: Error 402 (Insufficient Credits) now correctly triggers fallback to the next model in `priority_list`.
+- **Better Error Reporting**: Standardized, compact, and explicit error messages including operator and model names.
+- **Fixed Hardcoded Limits**: Replaced hardcoded 8192 token limit in vision paths with configurable `max_tokens`.
+
+## [3.1.1] - 2026-06-10
+### Fixed
+- Fixed bug where `priority_list` was incorrectly treated as a literal model name in vision-based generation paths.
+
 ## [3.1.0] - 2026-06-10
 ### Added
 - **Operator Auto-Detection**: Use `--operator auto` to scan environment variables and dynamically route requests across multiple AI providers (OpenAI, Gemini, Groq, etc.) based on available keys.

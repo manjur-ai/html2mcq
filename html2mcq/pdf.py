@@ -360,6 +360,7 @@ class PDFExtractor:
         ocr_lang: str = "eng",
         ocr_models: Optional[List[str]] = None,
         available_keys: Optional[dict] = None,
+        max_tokens: int = 4096,
     ):
         """
         Parameters
@@ -392,6 +393,8 @@ class PDFExtractor:
             Tesseract language code for pytesseract fallback.
         available_keys : dict, optional
             Map of provider -> key for 'auto' provider mode.
+        max_tokens : int
+            Max tokens for vision API response.
         """
         self.backend = backend.lower()
         self.chunk_size = chunk_size
@@ -410,6 +413,7 @@ class PDFExtractor:
         self.ocr_fallback = ocr_fallback
         self.ocr_lang = ocr_lang
         self.available_keys = available_keys or {}
+        self.max_tokens = max_tokens
 
         # Initialise primary backend eagerly (validates deps)
         self._primary = self._make_backend(self.backend)
@@ -589,6 +593,7 @@ class PDFExtractor:
                 text = _ocr_vision_api(
                     pngs, model=self.scanned_backend,
                     api_key=self.vision_api_key, provider=self.vision_provider,
+                    max_tokens=self.max_tokens,
                 )
                 if text.strip():
                     pass  # use it
@@ -599,9 +604,10 @@ class PDFExtractor:
                     for kw in ("insufficient", "balance", "quota", "credits", "402", "payment")
                 )
                 if no_balance:
-                    print(f"  [html2mcq] ⚠ {self.scanned_backend}: insufficient balance")
+                    print(f"  [html2mcq] \u26a0 ({self.vision_provider}) '{self.scanned_backend}': insufficient balance")
                 else:
-                    print(f"  [html2mcq] ⚠ {self.scanned_backend} failed: {err_msg[:120]}")
+                    err_msg_line = err_msg.split('\n')[0][:100]
+                    print(f"  [html2mcq] \u26a0 ({self.vision_provider}) '{self.scanned_backend}' failed: {err_msg_line}")
                 # Fall back to auto, skipping the failed model
                 fallback = [m for m in self._ocr_models if m != self.scanned_backend]
                 if fallback:
@@ -686,6 +692,7 @@ class PDFExtractor:
                         scanned_content = _ocr_vision_api(
                             pngs, model=self.scanned_backend,
                             api_key=self.vision_api_key, provider=self.vision_provider,
+                            max_tokens=self.max_tokens,
                         )
                         if scanned_content.strip():
                             pass
@@ -696,9 +703,10 @@ class PDFExtractor:
                             for kw in ("insufficient", "balance", "quota", "credits", "402", "payment")
                         )
                         if no_balance:
-                            print(f"  [html2mcq] ⚠ {self.scanned_backend}: insufficient balance")
+                            print(f"  [html2mcq] \u26a0 ({self.vision_provider}) '{self.scanned_backend}': insufficient balance")
                         else:
-                            print(f"  [html2mcq] ⚠ {self.scanned_backend} failed: {err_msg[:120]}")
+                            err_msg_line = err_msg.split('\n')[0][:100]
+                            print(f"  [html2mcq] \u26a0 ({self.vision_provider}) '{self.scanned_backend}' failed: {err_msg_line}")
                         # Fall back to auto, skipping the failed model
                         fallback = [m for m in self._ocr_models if m != self.scanned_backend]
                         if fallback:
@@ -752,6 +760,7 @@ class PDFExtractor:
             provider=self.vision_provider,
             fallback_to_tesseract=self.ocr_fallback,
             tesseract_lang=self.ocr_lang,
+            max_tokens=self.max_tokens,
         )
 
     def _ocr_scanned_via_pytesseract(self, pngs: List[bytes]) -> str:
@@ -792,6 +801,7 @@ class PDFExtractor:
                 result = _ocr_vision_api(
                     pngs, model=current_model,
                     api_key=p_key, provider=p_target,
+                    max_tokens=self.max_tokens,
                 )
                 if result:
                     print(f"  [html2mcq] ✓ ({p_target}) {current_model}: {len(result)} chars")
@@ -803,9 +813,10 @@ class PDFExtractor:
                     for kw in ("insufficient", "balance", "quota", "credits", "402", "payment")
                 )
                 if no_balance:
-                    print(f"  [html2mcq] ⚠ ({p_target}) {current_model}: insufficient balance")
+                    print(f"  [html2mcq] \u26a0 ({p_target}) '{current_model}': insufficient balance")
                 else:
-                    print(f"  [html2mcq] ⚠ ({p_target}) {current_model} failed: {err_msg[:120]}")
+                    err_msg_line = err_msg.split('\n')[0][:100]
+                    print(f"  [html2mcq] \u26a0 ({p_target}) '{current_model}' failed: {err_msg_line}")
                 continue
         return ""
 

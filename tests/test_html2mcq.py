@@ -1026,6 +1026,14 @@ class TestMCQGeneratorInit:
         gen = MCQGenerator(provider="ollama", mcq_model="priority_list", ocr_model="gpt-4o", method="twostep")
         assert gen.mcq_model == "qwen2.5:7b"
 
+    def test_max_tokens_propagation(self):
+        from html2mcq.generator import MCQGenerator
+        custom_tokens = 2500
+        gen = MCQGenerator(api_key="sk-test", provider="openai", max_tokens=custom_tokens, method="onestep", ocr_model="gpt-4o")
+        assert gen.max_tokens == custom_tokens
+        assert gen.image_ocr_extractor.max_tokens == custom_tokens
+        assert gen.pdf_extractor.max_tokens == custom_tokens
+
     def test_ollama_custom_model_preserved(self):
         from html2mcq.generator import MCQGenerator
         gen = MCQGenerator(provider="ollama", mcq_model="llama3.1:8b", ocr_model="gpt-4o", method="twostep")
