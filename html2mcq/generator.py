@@ -1308,7 +1308,7 @@ class MCQGenerator:
             return []
 
         # ── Build content: text instruction + all images ────────────────
-        instr_parts = [f"Generate {n} MCQ questions from the content in these images."]
+        instr_parts = [f"Generate up to {n} MCQ questions from the content in these images. If the images support fewer, generate fewer. If they support none, return []."]
         if page_title:
             instr_parts.insert(0, f"PAGE TITLE: {page_title}")
         if difficulty_mix:
@@ -1323,6 +1323,7 @@ class MCQGenerator:
             )
         instr_parts.append(
             "Return ONLY a JSON array, no markdown. "
+            "Do not invent questions to reach the requested count. "
             'Each item: {"question_html": "...", "options": ["A","B","C","D"], '
             '"answers": [0], "difficulty": "easy|medium|hard", '
             '"explanation": "..."}'
@@ -1415,7 +1416,7 @@ class MCQGenerator:
             return []
 
         # ── Build instruction text (common) ─────────────────────────────
-        instr_parts = [f"Generate {n} MCQ questions based on the content in these PDF pages."]
+        instr_parts = [f"Generate up to {n} MCQ questions based on the content in these PDF pages. If the PDF supports fewer, generate fewer. If it supports none, return []."]
         if page_title:
             instr_parts.insert(0, f"PAGE TITLE: {page_title}")
         if difficulty_mix:
@@ -1430,6 +1431,7 @@ class MCQGenerator:
             )
         instr_parts.append(
             "Return ONLY a JSON array, no markdown. "
+            "Do not invent questions to reach the requested count. "
             'Each item: {"question_html": "...", "options": ["A","B","C","D"], '
             '"answers": [0], "difficulty": "easy|medium|hard", '
             '"explanation": "..."}'
@@ -1569,10 +1571,11 @@ class MCQGenerator:
         source_url: Optional[str],
         blocks: List[ContentBlock],
     ) -> MCQSet:
-        """Build final MCQSet from question list, trimming to exactly n."""
+        """Build final MCQSet from question list, allowing fewer than requested."""
         all_questions = all_questions[:n]
         summary = self._build_summary(blocks)
         exam_time = max(1, len(all_questions) * 2)
+        empty_reason = None if all_questions else self._infer_empty_reason(blocks)
         return MCQSet(
             source_url=source_url,
             page_title=page_title,
@@ -1585,9 +1588,12 @@ class MCQGenerator:
                 "mcq_model": getattr(self.backend, "mcq_model", "unknown"),
                 "method": self.method,
                 "requested_n": n,
+                "generated_less_than_requested": len(all_questions) < n,
+                "empty_reason": empty_reason,
                 "content_blocks": len(blocks),
                 "content_types": list({b.type for b in blocks}),
             },
+            empty_reason=empty_reason,
         )
 
     # ── Internal generation pipeline ─────────────────────────────────────────
@@ -1864,6 +1870,30 @@ class MCQGenerator:
             counts[b.type] = counts.get(b.type, 0) + 1
         parts = [f"{v} {k}{'s' if v>1 else ''}" for k, v in sorted(counts.items())]
         return "Content: " + ", ".join(parts)
+
+    @staticmethod
+    def _infer_empty_reason(blocks: List[ContentBlock]) -> str:
+        if not blocks:
+            return "meaningless or insufficient text"
+
+        types = {b.type for b in blocks}
+        text_parts = []
+        for b in blocks:
+            if b.type in {"text", "code", "table", "image_ocr", "pdf_text"}:
+                text_parts.append(str(b.content or ""))
+        text = "\n".join(text_parts).strip()
+        alnum = sum(ch.isalnum() for ch in text)
+        words = re.findall(r"[A-Za-z0-9][A-Za-z0-9_\-]{2,}", text)
+
+        if types <= {"image"} or ("image" in types and not text):
+            return "image does not have questionable text"
+        if "image_ocr" in types and (alnum < 40 or len(words) < 8):
+            return "low quality image"
+        if ("pdf" in types or "pdf_text" in types) and (alnum < 80 or len(words) < 12):
+            return "meaningless or insufficient text"
+        if alnum < 80 or len(words) < 12:
+            return "meaningless or insufficient text"
+        return "image does not have questionable text" if "image" in types else "meaningless or insufficient text"
 
     def _parse_response(self, raw: str) -> List[MCQQuestion]:
         """Parse AI JSON response into MCQQuestion objects."""

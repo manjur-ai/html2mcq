@@ -68,13 +68,17 @@ class MCQSet:
     content_summary: str
     total_exam_time: int = 30       # Minutes; 2 min per question by default
     metadata: Dict[str, Any] = field(default_factory=dict)
+    empty_reason: Optional[str] = None
 
     def to_dict(self) -> dict:
         """Returns the clean exam-ready JSON structure."""
-        return {
+        data = {
             "total_exam_time": self.total_exam_time,
             "questions": [q.to_dict() for q in self.questions],
         }
+        if not self.questions and self.empty_reason:
+            data["empty_reason"] = self.empty_reason
+        return data
 
     def to_json(self, indent: int = 2) -> str:
         return json.dumps(self.to_dict(), indent=indent, ensure_ascii=False)
@@ -158,4 +162,5 @@ class MCQSet:
             content_summary=self.content_summary,
             total_exam_time=len(filtered) * 2,
             metadata=self.metadata,
+            empty_reason=self.empty_reason if not filtered else None,
         )
