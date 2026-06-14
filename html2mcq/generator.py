@@ -98,6 +98,7 @@ class _AnthropicBackend:
         msg = self.client.messages.create(
             model=self.mcq_model,
             max_tokens=max_tokens,
+            timeout=70,
             system=system,
             messages=[{"role": "user", "content": user}],
         )
@@ -127,6 +128,7 @@ class _OpenAIBackend:
         resp = self.client.chat.completions.create(
             model=self.mcq_model,
             max_tokens=max_tokens,
+            timeout=70,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
@@ -168,6 +170,7 @@ class _OpenRouterBackend:
         resp = self.client.chat.completions.create(
             model=self.mcq_model,
             max_tokens=max_tokens,
+            timeout=70,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
@@ -207,6 +210,7 @@ class _OllamaBackend:
         resp = self.client.chat.completions.create(
             model=self.mcq_model,
             max_tokens=max_tokens,
+            timeout=70,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
@@ -241,6 +245,7 @@ class _GeminiBackend:
         resp = self.client.chat.completions.create(
             model=self.mcq_model,
             max_tokens=max_tokens,
+            timeout=70,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
@@ -275,6 +280,7 @@ class _DeepSeekBackend:
         resp = self.client.chat.completions.create(
             model=self.mcq_model,
             max_tokens=max_tokens,
+            timeout=70,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
@@ -309,6 +315,7 @@ class _GroqBackend:
         resp = self.client.chat.completions.create(
             model=self.mcq_model,
             max_tokens=max_tokens,
+            timeout=70,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
@@ -349,6 +356,7 @@ class _ManualAIBackend:
         resp = self.client.chat.completions.create(
             model=self.mcq_model,
             max_tokens=max_tokens,
+            timeout=70,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
@@ -1383,6 +1391,7 @@ class MCQGenerator:
                     model=model_name,
                     messages=[{"role": "user", "content": content}],
                     max_tokens=self.max_tokens,
+                    timeout=70,
                 ))
                 raw = (resp.choices[0].message.content or "").strip()
                 if not raw:
@@ -1506,6 +1515,7 @@ class MCQGenerator:
                     model=model_name,
                     messages=[{"role": "user", "content": content}],
                     max_tokens=self.max_tokens,
+                    timeout=70,
                 ))
                 raw = (resp.choices[0].message.content or "").strip()
                 if not raw:
@@ -1977,6 +1987,7 @@ class _AsyncAnthropicBackend:
         msg = await self.client.messages.create(
             model=self.mcq_model,
             max_tokens=max_tokens,
+            timeout=70,
             system=system,
             messages=[{"role": "user", "content": user}],
         )
@@ -1996,6 +2007,7 @@ class _AsyncOpenAIBackend:
         resp = await self.client.chat.completions.create(
             model=self.mcq_model,
             max_tokens=max_tokens,
+            timeout=70,
             messages=[
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},

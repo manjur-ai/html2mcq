@@ -201,6 +201,7 @@ def _ocr_vision_api(
         model=model,
         messages=[{"role": "user", "content": content}],
         max_tokens=max_tokens,
+        timeout=70,
     )
     return resp.choices[0].message.content.strip()
 

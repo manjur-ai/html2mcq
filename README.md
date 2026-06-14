@@ -30,8 +30,23 @@
 - **LMS Export**: Direct export to **Aiken** and **Moodle XML** formats for easy course importing.
 - **Native PDF Vision**: Sends raw PDF data directly to Gemini for highest extraction quality.
 - **Resilient Retries**: Automatic exponential backoff for rate limits and transient errors.
+- **Request Timeout**: All AI provider calls have a 70-second timeout to prevent hanging.
 - **Hybrid Vision**: Simultaneous text + image analysis in `onestep` mode.
 - **Smart Choice**: `method="auto"` intelligently chooses the best processing path.
+
+---
+
+## Request Timeout
+
+All AI provider calls now pass `timeout=70` (seconds), ensuring every request returns within a reasonable window. This applies to all 10 synchronous backends (`_AnthropicBackend`, `_OpenAIBackend`, `_OpenRouterBackend`, `_OllamaBackend`, `_GeminiBackend`, `_DeepSeekBackend`, `_GroqBackend`, `_ManualAIBackend`), 2 async backends (`_AsyncAnthropicBackend`, `_AsyncOpenAIBackend`), and the vision helper methods (`_vision_mcq`, `_vision_mcq_pdf`, `_ocr_vision_call`).
+
+Without this timeout, the OpenAI SDK's default is effectively infinite — a request to a slow or unresponsive model can hang your application indefinitely. The 70-second value balances the needs of complex PDF/image processing against responsiveness.
+
+You can override the timeout by monkey-patching the backend after import, or pass a custom `timeout` for PDF downloads via `backend_kwargs`:
+
+```python
+gen = MCQGenerator(api_key="...", method="auto", timeout=120)
+```
 
 ---
 

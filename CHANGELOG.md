@@ -1,3 +1,9 @@
+## [3.3.2] - 2026-06-14
+### Added
+- **`timeout=70` on all AI provider calls**: Every `.create()` call across all 10 synchronous backends (`_AnthropicBackend`, `_OpenAIBackend`, `_OpenRouterBackend`, `_OllamaBackend`, `_GeminiBackend`, `_DeepSeekBackend`, `_GroqBackend`, `_ManualAIBackend`), 2 async backends (`_AsyncAnthropicBackend`, `_AsyncOpenAIBackend`), and the vision helpers (`_vision_mcq`, `_vision_mcq_pdf`, `_ocr_vision_call`) now pass `timeout=70` to prevent infinite hangs. See README for details.
+
+
+
 ## [3.3.1] - 2026-06-10
 ### Fixed
 - **`ocr_models` not propagated to extractors**: The resolved priority list (`self.ocr_models`) was not passed to `ImageOCRExtractor` or `PDFExtractor` — the raw constructor parameter was used instead, causing the env-var fallback path in `_resolve_ocr_models` to always trigger on the server. This meant `HTML2MCQ_OCR_MODELS` set via `os.environ` in application code was ignored.
