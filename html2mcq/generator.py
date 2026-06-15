@@ -90,6 +90,19 @@ class _AnthropicBackend:
             ) from e
         self.client = anthropic.Anthropic(api_key=api_key)
         self.mcq_model = mcq_model or self.DEFAULT_MODEL
+        self._usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+    @property
+    def usage(self):
+        return dict(self._usage)
+
+    def _add_usage(self, resp_usage):
+        if resp_usage:
+            pt = getattr(resp_usage, "input_tokens", 0) or 0
+            ct = getattr(resp_usage, "output_tokens", 0) or 0
+            self._usage["prompt_tokens"] += pt
+            self._usage["completion_tokens"] += ct
+            self._usage["total_tokens"] += pt + ct
 
     def complete(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
         return _retry_with_backoff(lambda: self._complete_raw(system, user, max_tokens))
@@ -102,6 +115,7 @@ class _AnthropicBackend:
             system=system,
             messages=[{"role": "user", "content": user}],
         )
+        self._add_usage(msg.usage)
         return msg.content[0].text
 
 
@@ -120,6 +134,19 @@ class _OpenAIBackend:
             ) from e
         self.client = openai.OpenAI(api_key=api_key)
         self.mcq_model = mcq_model or self.DEFAULT_MODEL
+        self._usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+    @property
+    def usage(self):
+        return dict(self._usage)
+
+    def _add_usage(self, resp_usage):
+        if resp_usage:
+            pt = getattr(resp_usage, "prompt_tokens", 0) or 0
+            ct = getattr(resp_usage, "completion_tokens", 0) or 0
+            self._usage["prompt_tokens"] += pt
+            self._usage["completion_tokens"] += ct
+            self._usage["total_tokens"] += getattr(resp_usage, "total_tokens", pt + ct) or pt + ct
 
     def complete(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
         return _retry_with_backoff(lambda: self._complete_raw(system, user, max_tokens))
@@ -134,6 +161,7 @@ class _OpenAIBackend:
                 {"role": "user", "content": user},
             ],
         )
+        self._add_usage(resp.usage)
         return resp.choices[0].message.content or ""
 
 
@@ -162,6 +190,19 @@ class _OpenRouterBackend:
             },
         )
         self.mcq_model = mcq_model or self.DEFAULT_MODEL
+        self._usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+    @property
+    def usage(self):
+        return dict(self._usage)
+
+    def _add_usage(self, resp_usage):
+        if resp_usage:
+            pt = getattr(resp_usage, "prompt_tokens", 0) or 0
+            ct = getattr(resp_usage, "completion_tokens", 0) or 0
+            self._usage["prompt_tokens"] += pt
+            self._usage["completion_tokens"] += ct
+            self._usage["total_tokens"] += getattr(resp_usage, "total_tokens", pt + ct) or pt + ct
 
     def complete(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
         return _retry_with_backoff(lambda: self._complete_raw(system, user, max_tokens))
@@ -176,6 +217,7 @@ class _OpenRouterBackend:
                 {"role": "user", "content": user},
             ],
         )
+        self._add_usage(resp.usage)
         return resp.choices[0].message.content or ""
 
 
@@ -202,6 +244,19 @@ class _OllamaBackend:
             base_url=ollama_base_url,
         )
         self.mcq_model = mcq_model or self.DEFAULT_MODEL
+        self._usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+    @property
+    def usage(self):
+        return dict(self._usage)
+
+    def _add_usage(self, resp_usage):
+        if resp_usage:
+            pt = getattr(resp_usage, "prompt_tokens", 0) or 0
+            ct = getattr(resp_usage, "completion_tokens", 0) or 0
+            self._usage["prompt_tokens"] += pt
+            self._usage["completion_tokens"] += ct
+            self._usage["total_tokens"] += getattr(resp_usage, "total_tokens", pt + ct) or pt + ct
 
     def complete(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
         return _retry_with_backoff(lambda: self._complete_raw(system, user, max_tokens))
@@ -216,6 +271,7 @@ class _OllamaBackend:
                 {"role": "user", "content": user},
             ],
         )
+        self._add_usage(resp.usage)
         return resp.choices[0].message.content or ""
 
 
@@ -237,6 +293,19 @@ class _GeminiBackend:
             base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
         )
         self.mcq_model = mcq_model or self.DEFAULT_MODEL
+        self._usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+    @property
+    def usage(self):
+        return dict(self._usage)
+
+    def _add_usage(self, resp_usage):
+        if resp_usage:
+            pt = getattr(resp_usage, "prompt_tokens", 0) or 0
+            ct = getattr(resp_usage, "completion_tokens", 0) or 0
+            self._usage["prompt_tokens"] += pt
+            self._usage["completion_tokens"] += ct
+            self._usage["total_tokens"] += getattr(resp_usage, "total_tokens", pt + ct) or pt + ct
 
     def complete(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
         return _retry_with_backoff(lambda: self._complete_raw(system, user, max_tokens))
@@ -251,6 +320,7 @@ class _GeminiBackend:
                 {"role": "user", "content": user},
             ],
         )
+        self._add_usage(resp.usage)
         return resp.choices[0].message.content or ""
 
 
@@ -272,6 +342,19 @@ class _DeepSeekBackend:
             base_url="https://api.deepseek.com",
         )
         self.mcq_model = mcq_model or self.DEFAULT_MODEL
+        self._usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+    @property
+    def usage(self):
+        return dict(self._usage)
+
+    def _add_usage(self, resp_usage):
+        if resp_usage:
+            pt = getattr(resp_usage, "prompt_tokens", 0) or 0
+            ct = getattr(resp_usage, "completion_tokens", 0) or 0
+            self._usage["prompt_tokens"] += pt
+            self._usage["completion_tokens"] += ct
+            self._usage["total_tokens"] += getattr(resp_usage, "total_tokens", pt + ct) or pt + ct
 
     def complete(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
         return _retry_with_backoff(lambda: self._complete_raw(system, user, max_tokens))
@@ -286,6 +369,7 @@ class _DeepSeekBackend:
                 {"role": "user", "content": user},
             ],
         )
+        self._add_usage(resp.usage)
         return resp.choices[0].message.content or ""
 
 
@@ -307,6 +391,19 @@ class _GroqBackend:
             base_url="https://api.groq.com/openai/v1",
         )
         self.mcq_model = mcq_model or self.DEFAULT_MODEL
+        self._usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+    @property
+    def usage(self):
+        return dict(self._usage)
+
+    def _add_usage(self, resp_usage):
+        if resp_usage:
+            pt = getattr(resp_usage, "prompt_tokens", 0) or 0
+            ct = getattr(resp_usage, "completion_tokens", 0) or 0
+            self._usage["prompt_tokens"] += pt
+            self._usage["completion_tokens"] += ct
+            self._usage["total_tokens"] += getattr(resp_usage, "total_tokens", pt + ct) or pt + ct
 
     def complete(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
         return _retry_with_backoff(lambda: self._complete_raw(system, user, max_tokens))
@@ -321,6 +418,7 @@ class _GroqBackend:
                 {"role": "user", "content": user},
             ],
         )
+        self._add_usage(resp.usage)
         return resp.choices[0].message.content or ""
 
 
@@ -348,6 +446,19 @@ class _ManualAIBackend:
             base_url=base_url,
         )
         self.mcq_model = mcq_model or self.DEFAULT_MODEL
+        self._usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+    @property
+    def usage(self):
+        return dict(self._usage)
+
+    def _add_usage(self, resp_usage):
+        if resp_usage:
+            pt = getattr(resp_usage, "prompt_tokens", 0) or 0
+            ct = getattr(resp_usage, "completion_tokens", 0) or 0
+            self._usage["prompt_tokens"] += pt
+            self._usage["completion_tokens"] += ct
+            self._usage["total_tokens"] += getattr(resp_usage, "total_tokens", pt + ct) or pt + ct
 
     def complete(self, system: str, user: Union[str, List[dict]], max_tokens: int) -> str:
         return _retry_with_backoff(lambda: self._complete_raw(system, user, max_tokens))
@@ -362,6 +473,7 @@ class _ManualAIBackend:
                 {"role": "user", "content": user},
             ],
         )
+        self._add_usage(resp.usage)
         return resp.choices[0].message.content or ""
 
 
@@ -782,6 +894,19 @@ class MCQGenerator:
         self.custom_instructions = custom_instructions or ""
         self.prompt_log_path = prompt_log_path
         self.save_ocr_path = save_ocr_path
+        self._usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+    @property
+    def usage(self):
+        return dict(self._usage)
+
+    def _add_usage(self, resp_usage):
+        if resp_usage:
+            pt = getattr(resp_usage, "prompt_tokens", 0) or getattr(resp_usage, "input_tokens", 0) or 0
+            ct = getattr(resp_usage, "completion_tokens", 0) or getattr(resp_usage, "output_tokens", 0) or 0
+            self._usage["prompt_tokens"] += pt
+            self._usage["completion_tokens"] += ct
+            self._usage["total_tokens"] += getattr(resp_usage, "total_tokens", pt + ct) or pt + ct
 
     def _log_prompt(self, label: str, text: str):
         """Append *text* to the prompt log file if *prompt_log_path* is set.
@@ -1393,6 +1518,7 @@ class MCQGenerator:
                     max_tokens=self.max_tokens,
                     timeout=70,
                 ))
+                self._add_usage(resp.usage)
                 raw = (resp.choices[0].message.content or "").strip()
                 if not raw:
                     print(f"  [html2mcq] ! ({p_target}) '{model_name}' returned empty response")
@@ -1517,6 +1643,7 @@ class MCQGenerator:
                     max_tokens=self.max_tokens,
                     timeout=70,
                 ))
+                self._add_usage(resp.usage)
                 raw = (resp.choices[0].message.content or "").strip()
                 if not raw:
                     print(f"  [html2mcq] ! ({p_target}) '{model_name}' returned empty response")
@@ -1602,6 +1729,7 @@ class MCQGenerator:
                 "empty_reason": empty_reason,
                 "content_blocks": len(blocks),
                 "content_types": list({b.type for b in blocks}),
+                "token_usage": self._usage,
             },
             empty_reason=empty_reason,
         )
@@ -1785,6 +1913,7 @@ class MCQGenerator:
                 self._log_prompt("USER", str(user_content) if isinstance(user_content, list) else user_content)
                 try:
                     raw = current_backend.complete(system_prompt, user_content, batch_max_tokens)
+                    self._add_usage(current_backend.usage)
                     batch = self._parse_response(raw)
                 except Exception as e:
                     err_msg = str(e).split('\n')[0][:100]
@@ -1849,6 +1978,7 @@ class MCQGenerator:
             self._log_prompt("USER", str(user_content) if isinstance(user_content, list) else user_content)
             try:
                 raw = current_backend.complete(system_prompt, user_content, self.max_tokens)
+                self._add_usage(current_backend.usage)
                 batch_questions = self._parse_response(raw)
             except Exception as e:
                 # Resolve display names for the error message
