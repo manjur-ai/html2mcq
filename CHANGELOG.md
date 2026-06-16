@@ -1,3 +1,7 @@
+## [3.3.4] - 2026-06-16
+### Changed
+- **Conditional prompt for `n >= 999`**: `_vision_mcq` and `_vision_mcq_pdf` now use "Generate as many high-quality MCQ questions as the content supports" when `n` is large, instead of "Generate up to {n} questions". Small `n` values continue to use the explicit count wording. `build_user_prompt` (prompts.py) already had this conditional for `n == 999` — now all three prompt sites are consistent.
+
 ## [3.3.3] - 2026-06-15
 ### Added
 - **Token usage tracking**: All backend `_complete_raw()` methods now capture `resp.usage` from API responses and accumulate it. `MCQGenerator` exposes a `usage` property with `prompt_tokens`, `completion_tokens`, and `total_tokens`. Token usage is included in `MCQSet.metadata.token_usage`. The vision helpers (`_vision_mcq`, `_vision_mcq_pdf`) also capture token usage.
@@ -5,8 +9,6 @@
 ## [3.3.2] - 2026-06-14
 ### Added
 - **`timeout=70` on all AI provider calls**: Every `.create()` call across all 10 synchronous backends (`_AnthropicBackend`, `_OpenAIBackend`, `_OpenRouterBackend`, `_OllamaBackend`, `_GeminiBackend`, `_DeepSeekBackend`, `_GroqBackend`, `_ManualAIBackend`), 2 async backends (`_AsyncAnthropicBackend`, `_AsyncOpenAIBackend`), and the vision helpers (`_vision_mcq`, `_vision_mcq_pdf`, `_ocr_vision_call`) now pass `timeout=70` to prevent infinite hangs. See README for details.
-
-
 
 ## [3.3.1] - 2026-06-10
 ### Fixed

@@ -1441,10 +1441,7 @@ class MCQGenerator:
             return []
 
         # ── Build content: text instruction + all images ────────────────
-        if n >= 999:
-            instr_parts = ["Generate as many high-quality MCQ questions as the content in these images supports. Cover all distinct valid topics without inventing extra questions. If the images support none, return []."]
-        else:
-            instr_parts = [f"Generate up to {n} MCQ questions from the content in these images. If the images support fewer, generate fewer. If they support none, return []."]
+        instr_parts = [f"Generate up to {n} MCQ questions from the content in these images. If the images support fewer, generate fewer. If they support none, return []."]
         if page_title:
             instr_parts.insert(0, f"PAGE TITLE: {page_title}")
         if difficulty_mix:
@@ -1554,10 +1551,7 @@ class MCQGenerator:
             return []
 
         # ── Build instruction text (common) ─────────────────────────────
-        if n >= 999:
-            instr_parts = ["Generate as many high-quality MCQ questions as the content in these PDF pages supports. Cover all distinct valid topics without inventing extra questions. If the PDF supports none, return []."]
-        else:
-            instr_parts = [f"Generate up to {n} MCQ questions based on the content in these PDF pages. If the PDF supports fewer, generate fewer. If it supports none, return []."]
+        instr_parts = [f"Generate up to {n} MCQ questions based on the content in these PDF pages. If the PDF supports fewer, generate fewer. If it supports none, return []."]
         if page_title:
             instr_parts.insert(0, f"PAGE TITLE: {page_title}")
         if difficulty_mix:
