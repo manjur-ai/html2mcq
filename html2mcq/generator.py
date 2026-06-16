@@ -908,6 +908,16 @@ class MCQGenerator:
             self._usage["completion_tokens"] += ct
             self._usage["total_tokens"] += getattr(resp_usage, "total_tokens", pt + ct) or pt + ct
 
+    def _merge_ocr_usage(self):
+        """Merge accumulated OCR/PDF vision API usage into self._usage."""
+        for src in (self.image_ocr_extractor, self.pdf_extractor):
+            u = src.usage
+            if any(v for v in u.values()):
+                self._usage["prompt_tokens"] += u["prompt_tokens"]
+                self._usage["completion_tokens"] += u["completion_tokens"]
+                self._usage["total_tokens"] += u["total_tokens"]
+                src._usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
     def _log_prompt(self, label: str, text: str):
         """Append *text* to the prompt log file if *prompt_log_path* is set.
         Use ``"-"`` or ``"stdout"`` as the path to print to terminal."""
@@ -969,6 +979,8 @@ class MCQGenerator:
                 else:
                     # Standard path: OCR images into text
                     blocks = self.image_ocr_extractor.enrich_blocks(blocks, replace=True)
+
+            self._merge_ocr_usage()
 
             all_qs, _ = self._generate(
                 blocks=blocks,
@@ -1118,6 +1130,8 @@ class MCQGenerator:
                 else:
                     # Standard path: OCR images into text
                     blocks = self.image_ocr_extractor.enrich_blocks(blocks, replace=True)
+
+            self._merge_ocr_usage()
 
             all_qs, _ = self._generate(
                 blocks=blocks,
@@ -1290,6 +1304,7 @@ class MCQGenerator:
                 all_blocks.extend(blocks)
             if not all_blocks:
                 raise ValueError("No text could be extracted from any PDF")
+            self._merge_ocr_usage()
             save_ocr_path = getattr(self, 'save_ocr_path', None)
             if save_ocr_path:
                 ocr_text = "\n".join(b.content for b in all_blocks if b.content)
@@ -1374,6 +1389,7 @@ class MCQGenerator:
                 all_blocks.extend(blocks)
             if not all_blocks:
                 raise ValueError("No text could be extracted from any PDF")
+            self._merge_ocr_usage()
             save_ocr_path = getattr(self, 'save_ocr_path', None)
             if save_ocr_path:
                 ocr_text = "\n".join(b.content for b in all_blocks if b.content)
@@ -1442,9 +1458,13 @@ class MCQGenerator:
 
         # ── Build content: text instruction + all images ────────────────
         if n >= 999:
-            instr_parts = ["Generate as many high-quality MCQ questions as the content in these images supports. Cover all distinct valid topics without inventing extra questions. If the images support none, return []."]
+            instr_parts = ["Generate as many high-quality MCQ questions as the content in these images supports. Cover all distinct valid topics. If the images support none, return []."]
         else:
-            instr_parts = [f"Generate up to {n} MCQ questions from the content in these images. If the images support fewer, generate fewer. If they support none, return []."]
+            instr_parts = [
+                f"Generate EXACTLY {n} high-quality MCQ questions from the content in these images. "
+                f"Fewer questions are allowed only when there is not enough meaningful content. "
+                f"If there is no question-worthy content, return []."
+            ]
         if page_title:
             instr_parts.insert(0, f"PAGE TITLE: {page_title}")
         if difficulty_mix:
@@ -1459,7 +1479,6 @@ class MCQGenerator:
             )
         instr_parts.append(
             "Return ONLY a JSON array, no markdown. "
-            "Do not invent questions to reach the requested count. "
             'Each item: {"question_html": "...", "options": ["A","B","C","D"], '
             '"answers": [0], "difficulty": "easy|medium|hard", '
             '"explanation": "..."}'
@@ -1555,9 +1574,13 @@ class MCQGenerator:
 
         # ── Build instruction text (common) ─────────────────────────────
         if n >= 999:
-            instr_parts = ["Generate as many high-quality MCQ questions as the content in these PDF pages supports. Cover all distinct valid topics without inventing extra questions. If the PDF supports none, return []."]
+            instr_parts = ["Generate as many high-quality MCQ questions as the content in these PDF pages supports. Cover all distinct valid topics. If the PDF supports none, return []."]
         else:
-            instr_parts = [f"Generate up to {n} MCQ questions based on the content in these PDF pages. If the PDF supports fewer, generate fewer. If it supports none, return []."]
+            instr_parts = [
+                f"Generate EXACTLY {n} high-quality MCQ questions based on the content in these PDF pages. "
+                f"Fewer questions are allowed only when there is not enough meaningful content. "
+                f"If there is no question-worthy content, return []."
+            ]
         if page_title:
             instr_parts.insert(0, f"PAGE TITLE: {page_title}")
         if difficulty_mix:
@@ -1572,7 +1595,6 @@ class MCQGenerator:
             )
         instr_parts.append(
             "Return ONLY a JSON array, no markdown. "
-            "Do not invent questions to reach the requested count. "
             'Each item: {"question_html": "...", "options": ["A","B","C","D"], '
             '"answers": [0], "difficulty": "easy|medium|hard", '
             '"explanation": "..."}'
@@ -1687,6 +1709,8 @@ class MCQGenerator:
             raise ValueError("No image data could be downloaded for two-step processing")
 
         ocr_text = self.image_ocr_extractor.ocr_image_bytes(image_bytes_list)
+
+        self._merge_ocr_usage()
 
         if self.save_ocr_path:
             Path(self.save_ocr_path).write_text(ocr_text, encoding="utf-8")
@@ -1958,7 +1982,8 @@ class MCQGenerator:
                  # If model is invalid, we can't really continue in this loop
                  raise ValueError(f"In 'auto' operator mode, the model '{self.mcq_model}' could not be resolved.")
 
-        while remaining > 0:
+        attempts = 0
+        while remaining > 0 and attempts < 2:
             batch_n = min(remaining, self.batch_size)
             text_prompt = build_user_prompt(
                 blocks=blocks,
@@ -1997,10 +2022,9 @@ class MCQGenerator:
             all_questions.extend(batch_questions)
             _report(batch_questions)
             remaining -= len(batch_questions)
+            attempts += 1
 
             if len(batch_questions) == 0:
-                break
-            if remaining > 0 and len(batch_questions) < batch_n:
                 break
 
         if _pbar is not None:
@@ -2302,7 +2326,8 @@ class AsyncMCQGenerator(MCQGenerator):
                     print(f"  [html2mcq] ! ({p_target}) '{model_name}' failed: {err_msg}")
                     continue
         else:
-            while remaining > 0:
+            attempts = 0
+            while remaining > 0 and attempts < 2:
                 batch_n = min(remaining, self.batch_size)
                 text_prompt = build_user_prompt(blocks, batch_n, page_title=page_title, 
                                                custom_instructions=self._resolve_instructions(kwargs.get("custom_instructions")))
@@ -2320,6 +2345,7 @@ class AsyncMCQGenerator(MCQGenerator):
                     if not batch: break
                     all_questions.extend(batch)
                     remaining -= len(batch)
+                    attempts += 1
                 except Exception as e:
                     res = _parse_operator_model(self.mcq_model, self.provider, self.available_keys)
                     p_display, m_display = res if res else (self.provider, self.mcq_model)

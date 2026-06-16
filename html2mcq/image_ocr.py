@@ -130,6 +130,7 @@ def _ocr_vision_api(
     api_key: str = "",
     provider: str = "openrouter",
     max_tokens: int = 4096,
+    usage_accumulator: Optional[dict] = None,
 ) -> str:
     """
     Send one or more images to a vision model via an OpenAI-compatible API.
@@ -146,6 +147,9 @@ def _ocr_vision_api(
         "openrouter" (default) uses https://openrouter.ai/api/v1.
     max_tokens : int
         Max tokens for the response.
+    usage_accumulator : dict, optional
+        If provided, token usage from this call is accumulated into this dict.
+        Keys: "prompt_tokens", "completion_tokens", "total_tokens".
 
     Returns
     -------
@@ -203,6 +207,14 @@ def _ocr_vision_api(
         max_tokens=max_tokens,
         timeout=70,
     )
+    if usage_accumulator is not None:
+        ru = resp.usage
+        if ru:
+            pt = getattr(ru, "prompt_tokens", 0) or getattr(ru, "input_tokens", 0) or 0
+            ct = getattr(ru, "completion_tokens", 0) or getattr(ru, "output_tokens", 0) or 0
+            usage_accumulator["prompt_tokens"] += pt
+            usage_accumulator["completion_tokens"] += ct
+            usage_accumulator["total_tokens"] += getattr(ru, "total_tokens", pt + ct) or pt + ct
     return resp.choices[0].message.content.strip()
 
 
@@ -215,6 +227,7 @@ def _ocr_vision_with_fallback(
     fallback_to_tesseract: bool = True,
     tesseract_lang: str = "eng",
     max_tokens: int = 4096,
+    usage_accumulator: Optional[dict] = None,
 ) -> str:
     """
     Try primary vision model, fall back to free model, then pytesseract.
@@ -228,6 +241,7 @@ def _ocr_vision_with_fallback(
                 image_bytes_list, model=primary_model,
                 api_key=api_key, provider=provider,
                 max_tokens=max_tokens,
+                usage_accumulator=usage_accumulator,
             )
         except Exception as e:
             err_msg = str(e)
@@ -249,6 +263,7 @@ def _ocr_vision_with_fallback(
                 image_bytes_list, model=free_model,
                 api_key=api_key, provider=provider,
                 max_tokens=max_tokens,
+                usage_accumulator=usage_accumulator,
             )
         except Exception as e:
             err_msg = str(e).split('\n')[0][:100]
@@ -376,6 +391,7 @@ class ImageOCRExtractor:
 
         # Parse the priority-ordered model list for "priority_list" backend
         self.ocr_models = self._resolve_ocr_models(ocr_models)
+        self._usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
     @staticmethod
     def _resolve_ocr_models(ocr_models: Optional[List[str]] = None) -> List[str]:
@@ -389,6 +405,10 @@ class ImageOCRExtractor:
         if env:
             return [m.strip() for m in env.split(",") if m.strip()]
         return list(_DEFAULT_OCR_PRIORITY)
+
+    @property
+    def usage(self):
+        return dict(self._usage)
 
     def download_images(
         self, blocks: List[ContentBlock]
@@ -519,6 +539,7 @@ class ImageOCRExtractor:
                     model=current_model,
                     api_key=p_key,
                     max_tokens=self.max_tokens,
+                    usage_accumulator=self._usage,
                 )
                 if result.strip():
                     return result
@@ -559,6 +580,7 @@ class ImageOCRExtractor:
                     model=current_model,
                     api_key=p_key,
                     max_tokens=self.max_tokens,
+                    usage_accumulator=self._usage,
                 )
                 if result.strip():
                     return result
@@ -601,6 +623,7 @@ class ImageOCRExtractor:
                     image_bytes_list, model=current_model,
                     api_key=p_key, provider=p_target,
                     max_tokens=self.max_tokens,
+                    usage_accumulator=self._usage,
                 )
                 if result:
                     print(f"  [html2mcq] ✓ ({p_target}) {current_model}: {len(result)} chars")

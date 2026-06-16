@@ -417,6 +417,11 @@ class PDFExtractor:
 
         # Initialise primary backend eagerly (validates deps)
         self._primary = self._make_backend(self.backend)
+        self._usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+    @property
+    def usage(self):
+        return dict(self._usage)
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -594,6 +599,7 @@ class PDFExtractor:
                     pngs, model=self.scanned_backend,
                     api_key=self.vision_api_key, provider=self.vision_provider,
                     max_tokens=self.max_tokens,
+                    usage_accumulator=self._usage,
                 )
                 if text.strip():
                     pass  # use it
@@ -693,6 +699,7 @@ class PDFExtractor:
                             pngs, model=self.scanned_backend,
                             api_key=self.vision_api_key, provider=self.vision_provider,
                             max_tokens=self.max_tokens,
+                            usage_accumulator=self._usage,
                         )
                         if scanned_content.strip():
                             pass
@@ -802,6 +809,7 @@ class PDFExtractor:
                     pngs, model=current_model,
                     api_key=p_key, provider=p_target,
                     max_tokens=self.max_tokens,
+                    usage_accumulator=self._usage,
                 )
                 if result:
                     print(f"  [html2mcq] ✓ ({p_target}) {current_model}: {len(result)} chars")
