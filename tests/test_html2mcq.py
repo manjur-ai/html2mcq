@@ -1807,3 +1807,36 @@ class TestOperatorAuto:
             calls = [call[0][0] for call in mock_make.call_args_list]
             assert "gemini" not in calls
             assert "openai" in calls
+
+    def test_token_usage_reports_selected_model_without_provider_prefix(self, monkeypatch):
+        from html2mcq.generator import MCQGenerator
+        from html2mcq.models import ContentBlock
+        from unittest.mock import MagicMock, patch
+
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-openai")
+        monkeypatch.setenv("HTML2MCQ_MCQ_MODELS", "(openai)/success-model")
+
+        gen = MCQGenerator(provider="auto", operator="auto", method="auto", mcq_model="priority_list")
+
+        with patch("html2mcq.generator._make_backend") as mock_make:
+            mock_openai = MagicMock()
+            mock_openai.complete.return_value = '[{"question_html": "Q1", "options": ["A","B","C","D"], "answers": [0]}]'
+            mock_openai.usage = {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30}
+            mock_make.return_value = mock_openai
+
+            blocks = [ContentBlock(type="text", content="Test content")]
+            qs, _ = gen._generate(
+                blocks,
+                n=1,
+                page_title="Title",
+                source_url=None,
+                difficulty_mix=None,
+                focus_topics=None,
+            )
+            mcq_set = gen._build_mcq_set(qs, 1, "Title", None, blocks)
+
+        assert mcq_set.metadata["mcq_model"] == "success-model"
+        assert mcq_set.metadata["token_usage"]["model"] == "success-model"
+        assert mcq_set.metadata["token_usage"]["prompt_tokens"] == 10
+        assert mcq_set.metadata["token_usage"]["completion_tokens"] == 20
+        assert mcq_set.metadata["token_usage"]["total_tokens"] == 30

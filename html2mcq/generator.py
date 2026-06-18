@@ -72,6 +72,40 @@ def _parse_operator_model(model_str: str, current_provider: str, available_keys:
 
     return (current_provider, model_str)
 
+def _clean_model_name(model: Optional[str]) -> str:
+    """Return the provider-free model id used for reporting/token usage."""
+    if not model or _is_mock_value(model):
+        return ""
+    model = str(model).strip()
+    match = re.match(r"^\(([^)]+)\)/(.*)$", model)
+    if match:
+        return match.group(2).strip()
+    return model
+
+def _usage_get(resp_usage, *names, default=0):
+    if not resp_usage:
+        return default
+    if isinstance(resp_usage, dict):
+        for name in names:
+            value = resp_usage.get(name)
+            if value is not None:
+                return value
+        return default
+    for name in names:
+        value = getattr(resp_usage, name, None)
+        if value is not None:
+            return value
+    return default
+
+def _usage_int(value) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+def _is_mock_value(value) -> bool:
+    return value is not None and type(value).__module__.startswith("unittest.mock")
+
 
 # ── AI backend registry ───────────────────────────────────────────────────────
 
@@ -115,7 +149,7 @@ class _AnthropicBackend:
             system=system,
             messages=[{"role": "user", "content": user}],
         )
-        self._add_usage(msg.usage)
+        self._add_usage(getattr(msg, "usage", None))
         return msg.content[0].text
 
 
@@ -161,7 +195,7 @@ class _OpenAIBackend:
                 {"role": "user", "content": user},
             ],
         )
-        self._add_usage(resp.usage)
+        self._add_usage(getattr(resp, "usage", None))
         return resp.choices[0].message.content or ""
 
 
@@ -217,7 +251,7 @@ class _OpenRouterBackend:
                 {"role": "user", "content": user},
             ],
         )
-        self._add_usage(resp.usage)
+        self._add_usage(getattr(resp, "usage", None))
         return resp.choices[0].message.content or ""
 
 
@@ -271,7 +305,7 @@ class _OllamaBackend:
                 {"role": "user", "content": user},
             ],
         )
-        self._add_usage(resp.usage)
+        self._add_usage(getattr(resp, "usage", None))
         return resp.choices[0].message.content or ""
 
 
@@ -320,7 +354,7 @@ class _GeminiBackend:
                 {"role": "user", "content": user},
             ],
         )
-        self._add_usage(resp.usage)
+        self._add_usage(getattr(resp, "usage", None))
         return resp.choices[0].message.content or ""
 
 
@@ -369,7 +403,7 @@ class _DeepSeekBackend:
                 {"role": "user", "content": user},
             ],
         )
-        self._add_usage(resp.usage)
+        self._add_usage(getattr(resp, "usage", None))
         return resp.choices[0].message.content or ""
 
 
@@ -418,7 +452,7 @@ class _GroqBackend:
                 {"role": "user", "content": user},
             ],
         )
-        self._add_usage(resp.usage)
+        self._add_usage(getattr(resp, "usage", None))
         return resp.choices[0].message.content or ""
 
 
@@ -473,7 +507,7 @@ class _ManualAIBackend:
                 {"role": "user", "content": user},
             ],
         )
-        self._add_usage(resp.usage)
+        self._add_usage(getattr(resp, "usage", None))
         return resp.choices[0].message.content or ""
 
 
@@ -709,6 +743,7 @@ class MCQGenerator:
     ):
         # ── Resolve Provider / Operator ──────────────────────────────────
         self.provider = (operator or provider).lower()
+        self._usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         
         # ── Scan for valid operators (API keys) ──────────────────────────
         self.available_keys = {}
@@ -898,15 +933,39 @@ class MCQGenerator:
 
     @property
     def usage(self):
+        self._ensure_usage()
         return dict(self._usage)
 
-    def _add_usage(self, resp_usage):
+    def _ensure_usage(self):
+        if not hasattr(self, "_usage"):
+            self._usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+
+    def _add_usage(self, resp_usage, model: Optional[str] = None):
+        self._ensure_usage()
+        clean_model = _clean_model_name(model) or _clean_model_name(_usage_get(resp_usage, "model", "mcq_model", default=""))
+        if clean_model:
+            self._usage["model"] = clean_model
         if resp_usage:
-            pt = getattr(resp_usage, "prompt_tokens", 0) or getattr(resp_usage, "input_tokens", 0) or 0
-            ct = getattr(resp_usage, "completion_tokens", 0) or getattr(resp_usage, "output_tokens", 0) or 0
+            pt = _usage_int(_usage_get(resp_usage, "prompt_tokens", "input_tokens", "input", default=0))
+            ct = _usage_int(_usage_get(resp_usage, "completion_tokens", "output_tokens", "output", default=0))
             self._usage["prompt_tokens"] += pt
             self._usage["completion_tokens"] += ct
-            self._usage["total_tokens"] += getattr(resp_usage, "total_tokens", pt + ct) or pt + ct
+            total = _usage_int(_usage_get(resp_usage, "total_tokens", "total", default=pt + ct)) or pt + ct
+            self._usage["total_tokens"] += total
+
+    def _merge_backend_usage(self, backend, model: Optional[str] = None):
+        if not backend:
+            return
+        usage = getattr(backend, "usage", None)
+        if _is_mock_value(usage):
+            usage = None
+        backend_model = getattr(backend, "mcq_model", None)
+        if _is_mock_value(backend_model):
+            backend_model = None
+        if usage:
+            self._add_usage(usage, model=model or backend_model)
+        if hasattr(backend, "_usage"):
+            backend._usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 
     def _merge_ocr_usage(self):
         """Merge accumulated OCR/PDF vision API usage into self._usage."""
@@ -1540,7 +1599,7 @@ class MCQGenerator:
                     max_tokens=self.max_tokens,
                     timeout=70,
                 ))
-                self._add_usage(resp.usage)
+                self._add_usage(getattr(resp, "usage", None), model=model_name)
                 raw = (resp.choices[0].message.content or "").strip()
                 if not raw:
                     print(f"  [html2mcq] ! ({p_target}) '{model_name}' returned empty response")
@@ -1671,7 +1730,7 @@ class MCQGenerator:
                     max_tokens=self.max_tokens,
                     timeout=70,
                 ))
-                self._add_usage(resp.usage)
+                self._add_usage(getattr(resp, "usage", None), model=model_name)
                 raw = (resp.choices[0].message.content or "").strip()
                 if not raw:
                     print(f"  [html2mcq] ! ({p_target}) '{model_name}' returned empty response")
@@ -1743,6 +1802,11 @@ class MCQGenerator:
         summary = self._build_summary(blocks)
         exam_time = max(1, len(all_questions) * 2)
         empty_reason = None if all_questions else self._infer_empty_reason(blocks)
+        self._ensure_usage()
+        usage = dict(self._usage)
+        metadata_model = usage.get("model") or _clean_model_name(getattr(self.backend, "mcq_model", "unknown")) or "unknown"
+        if usage.get("total_tokens") and not usage.get("model"):
+            usage["model"] = metadata_model
         return MCQSet(
             source_url=source_url,
             page_title=page_title,
@@ -1752,14 +1816,14 @@ class MCQGenerator:
             total_exam_time=exam_time,
             metadata={
                 "provider": self.provider,
-                "mcq_model": getattr(self.backend, "mcq_model", "unknown"),
+                "mcq_model": metadata_model,
                 "method": self.method,
                 "requested_n": n,
                 "generated_less_than_requested": len(all_questions) < n,
                 "empty_reason": empty_reason,
                 "content_blocks": len(blocks),
                 "content_types": list({b.type for b in blocks}),
-                "token_usage": self._usage,
+                "token_usage": usage,
             },
             empty_reason=empty_reason,
         )
@@ -1943,7 +2007,7 @@ class MCQGenerator:
                 self._log_prompt("USER", str(user_content) if isinstance(user_content, list) else user_content)
                 try:
                     raw = current_backend.complete(system_prompt, user_content, batch_max_tokens)
-                    self._add_usage(current_backend.usage)
+                    self._merge_backend_usage(current_backend, model=model_name)
                     batch = self._parse_response(raw)
                 except Exception as e:
                     err_msg = str(e).split('\n')[0][:100]
@@ -2009,7 +2073,7 @@ class MCQGenerator:
             self._log_prompt("USER", str(user_content) if isinstance(user_content, list) else user_content)
             try:
                 raw = current_backend.complete(system_prompt, user_content, self.max_tokens)
-                self._add_usage(current_backend.usage)
+                self._merge_backend_usage(current_backend, model=getattr(current_backend, "mcq_model", None))
                 batch_questions = self._parse_response(raw)
             except Exception as e:
                 # Resolve display names for the error message

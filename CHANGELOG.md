@@ -1,3 +1,8 @@
+## [3.3.7] - 2026-06-18
+### Fixed
+- **Token usage model reporting**: `MCQSet.metadata.token_usage` now includes the selected model as a provider-free model id, for example `llama-3.3-70b-versatile` instead of `(groq)/llama-3.3-70b-versatile`.
+- **Usage aggregation**: `MCQGenerator` now correctly merges backend usage dictionaries and records the model used by `priority_list` and direct vision paths.
+
 ## [3.3.4] - 2026-06-16
 ### Changed
 - **Conditional prompt for `n >= 999`**: `_vision_mcq` and `_vision_mcq_pdf` now use "Generate as many high-quality MCQ questions as the content supports" when `n` is large, instead of "Generate up to {n} questions". Small `n` values continue to use the explicit count wording. `build_user_prompt` (prompts.py) already had this conditional for `n == 999` — now all three prompt sites are consistent.
