@@ -71,6 +71,7 @@ gen = MCQGenerator(
     provider="openai",  # e.g. using Gemini via OpenAI endpoint
     method="auto",      # Now mandatory
     mcq_model="gemini-2.0-flash",
+    explanation="normal",  # normal | shorter | off
 )
 
 # 1. From a Website (Auto-selects twostep)
@@ -88,6 +89,10 @@ mcq = gen.from_image_paths("blurry_notes.jpg", n=5,
 
 print(mcq.to_pretty_str())
 ```
+
+### Explanation control
+
+Use `explanation="normal"`, `"shorter"`, or `"off"` to control the fixed MCQ explanation instruction. The same option is available in the CLI as `--explanation normal|shorter|off`.
 
 ---
 

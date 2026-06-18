@@ -12,7 +12,7 @@ try:
     from importlib.metadata import version as _v
     __version__ = _v("html2mcq")
 except Exception:
-    __version__ = "3.3.7"
+    __version__ = "3.3.8"
 __author__ = "html2mcq"
 __all__ = [
     "MCQGenerator",

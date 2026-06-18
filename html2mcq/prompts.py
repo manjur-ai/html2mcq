@@ -5,6 +5,34 @@ from __future__ import annotations
 from typing import List, Optional
 from .models import ContentBlock
 
+EXPLANATION_MODES = ("normal", "off", "shorter")
+
+
+def normalize_explanation_mode(explanation: Optional[str] = "normal") -> str:
+    mode = (explanation or "normal").strip().lower()
+    if mode not in EXPLANATION_MODES:
+        allowed = ", ".join(EXPLANATION_MODES)
+        raise ValueError(f"Invalid explanation mode '{explanation}'. Choose one of: {allowed}")
+    return mode
+
+
+def explanation_schema_text(explanation: Optional[str] = "normal") -> str:
+    mode = normalize_explanation_mode(explanation)
+    if mode == "off":
+        return "<empty string only>"
+    if mode == "shorter":
+        return "<one very short explanation sentence based only on the content, ideally under 12 words>"
+    return "<brief explanation based only on the content, or empty string>"
+
+
+def explanation_instruction(explanation: Optional[str] = "normal") -> str:
+    mode = normalize_explanation_mode(explanation)
+    if mode == "off":
+        return 'Explanation mode: off. Set "explanation" to "" for every question. Do not include reasoning text elsewhere.'
+    if mode == "shorter":
+        return 'Explanation mode: shorter. Keep "explanation" to one short sentence, ideally under 12 words, based only on the content.'
+    return 'Explanation mode: normal. Provide a brief explanation based only on the content.'
+
 
 _SYSTEM_BASE = """\
 You are an expert educator and MCQ JSON generator.
@@ -30,7 +58,7 @@ Schema:
     "marks": <1 if multi=false, 2 if multi=true>,
     "negative_marks": <0.25 if multi=false, 0 if multi=true>,
     "difficulty": "<easy|medium|hard>",
-    "explanation": "<brief explanation based only on the content, or empty string>"
+    "explanation": "{explanation_schema}"
   }
 ]
 
@@ -60,8 +88,9 @@ Rules:
 """
 
 
-def build_system_prompt() -> str:
-    return _SYSTEM_BASE
+def build_system_prompt(explanation: Optional[str] = "normal") -> str:
+    schema = explanation_schema_text(explanation)
+    return _SYSTEM_BASE.replace("{explanation_schema}", schema) + "\n" + explanation_instruction(explanation) + "\n"
 
 
 def build_user_prompt(
@@ -71,6 +100,7 @@ def build_user_prompt(
     focus_topics: Optional[List[str]] = None,
     page_title: str = "",
     custom_instructions: Optional[str] = None,
+    explanation: Optional[str] = "normal",
 ) -> str:
     sections: List[str] = []
 
@@ -170,6 +200,7 @@ def build_user_prompt(
         "Use all meaningful educational content: text, code, images, PDFs, diagrams, figures, charts, and tables. "
         "Create questions only from visible/illustrated educational content; ignore advertisements."
     )
+    instructions.append(explanation_instruction(explanation))
     if custom_instructions and custom_instructions.strip():
         instructions.append(
             f"\n--- CUSTOM INSTRUCTIONS (highest priority, override defaults if needed) ---\n"

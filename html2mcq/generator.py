@@ -40,7 +40,13 @@ def _retry_with_backoff(func, max_retries=3, initial_delay=1, factor=2, jitter=0
 
 from .extractor import ContentExtractor
 from .models import ContentBlock, MCQQuestion, MCQSet
-from .prompts import build_system_prompt, build_user_prompt
+from .prompts import (
+    build_system_prompt,
+    build_user_prompt,
+    explanation_instruction,
+    explanation_schema_text,
+    normalize_explanation_mode,
+)
 from .pdf import PDFExtractor, _render_pdf_pages_to_pngs, _render_specific_pages, _parse_page_range, _fetch_bytes
 from .image_ocr import ImageOCRExtractor, _download_image
 
@@ -732,6 +738,7 @@ class MCQGenerator:
         batch_size: int = 10,
         max_tokens: int = 4096,
         custom_instructions: Optional[str] = None,
+        explanation: str = "normal",
         prompt_log_path: Optional[str] = None,
         save_ocr_path: Optional[str] = None,
         api_key_override: Optional[str] = None,
@@ -927,6 +934,7 @@ class MCQGenerator:
             max_tokens=self.max_tokens,
         )
         self.custom_instructions = custom_instructions or ""
+        self.explanation = normalize_explanation_mode(explanation)
         self.prompt_log_path = prompt_log_path
         self.save_ocr_path = save_ocr_path
         self._usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
@@ -1010,6 +1018,7 @@ class MCQGenerator:
         enrich_pdfs: bool = True,
         enrich_images: bool = True,
         custom_instructions: Optional[str] = None,
+        explanation: Optional[str] = None,
         api_key_override: Optional[str] = None,
         prompt_log_path: Optional[str] = None,
         ocr_model: Optional[str] = None,
@@ -1049,6 +1058,7 @@ class MCQGenerator:
                 difficulty_mix=difficulty_mix,
                 focus_topics=focus_topics,
                 custom_instructions=custom_instructions,
+                explanation=explanation,
                 show_progress=show_progress,
             )
 
@@ -1066,6 +1076,7 @@ class MCQGenerator:
         enrich_pdfs: bool = True,
         enrich_images: bool = True,
         custom_instructions: Optional[str] = None,
+        explanation: Optional[str] = None,
         api_key_override: Optional[str] = None,
         prompt_log_path: Optional[str] = None,
         ocr_model: Optional[str] = None,
@@ -1079,6 +1090,7 @@ class MCQGenerator:
             difficulty_mix=difficulty_mix, focus_topics=focus_topics,
             enrich_pdfs=enrich_pdfs, enrich_images=enrich_images,
             custom_instructions=custom_instructions,
+            explanation=explanation,
             api_key_override=api_key_override, prompt_log_path=prompt_log_path,
             ocr_model=ocr_model, mcq_model=mcq_model,
             show_progress=show_progress,
@@ -1094,6 +1106,7 @@ class MCQGenerator:
         enrich_pdfs: bool = True,
         enrich_images: bool = True,
         custom_instructions: Optional[str] = None,
+        explanation: Optional[str] = None,
         api_key_override: Optional[str] = None,
         prompt_log_path: Optional[str] = None,
         ocr_model: Optional[str] = None,
@@ -1115,6 +1128,7 @@ class MCQGenerator:
             difficulty_mix=difficulty_mix, focus_topics=focus_topics,
             enrich_pdfs=enrich_pdfs, enrich_images=enrich_images,
             custom_instructions=custom_instructions,
+            explanation=explanation,
             api_key_override=api_key_override, prompt_log_path=prompt_log_path,
             ocr_model=ocr_model, mcq_model=mcq_model,
             show_progress=show_progress,
@@ -1129,6 +1143,7 @@ class MCQGenerator:
         difficulty_mix: Optional[str] = None,
         focus_topics: Optional[List[str]] = None,
         custom_instructions: Optional[str] = None,
+        explanation: Optional[str] = None,
         api_key_override: Optional[str] = None,
         prompt_log_path: Optional[str] = None,
         ocr_model: Optional[str] = None,
@@ -1145,6 +1160,7 @@ class MCQGenerator:
                 difficulty_mix=difficulty_mix,
                 focus_topics=focus_topics,
                 custom_instructions=custom_instructions,
+                explanation=explanation,
                 show_progress=show_progress,
             )
             return self._build_mcq_set(all_qs, n, page_title, source_url, blocks)
@@ -1159,6 +1175,7 @@ class MCQGenerator:
         enrich_pdfs: bool = True,
         enrich_images: bool = True,
         custom_instructions: Optional[str] = None,
+        explanation: Optional[str] = None,
         api_key_override: Optional[str] = None,
         prompt_log_path: Optional[str] = None,
         ocr_model: Optional[str] = None,
@@ -1200,6 +1217,7 @@ class MCQGenerator:
                 difficulty_mix=difficulty_mix,
                 focus_topics=focus_topics,
                 custom_instructions=custom_instructions,
+                explanation=explanation,
                 show_progress=show_progress,
             )
 
@@ -1213,6 +1231,7 @@ class MCQGenerator:
         difficulty_mix: Optional[str] = None,
         focus_topics: Optional[List[str]] = None,
         custom_instructions: Optional[str] = None,
+        explanation: Optional[str] = None,
         api_key_override: Optional[str] = None,
         prompt_log_path: Optional[str] = None,
         ocr_model: Optional[str] = None,
@@ -1233,6 +1252,7 @@ class MCQGenerator:
                     difficulty_mix=difficulty_mix,
                     focus_topics=focus_topics,
                     custom_instructions=custom_instructions,
+                    explanation=explanation,
                 )
                 return self._build_mcq_set(all_qs, n, title, urls[0] if urls else None, blocks)
             else:
@@ -1244,6 +1264,7 @@ class MCQGenerator:
                     difficulty_mix=difficulty_mix,
                     focus_topics=focus_topics,
                     custom_instructions=custom_instructions,
+                    explanation=explanation,
                     show_progress=show_progress,
                 )
 
@@ -1255,6 +1276,7 @@ class MCQGenerator:
         difficulty_mix: Optional[str] = None,
         focus_topics: Optional[List[str]] = None,
         custom_instructions: Optional[str] = None,
+        explanation: Optional[str] = None,
         api_key_override: Optional[str] = None,
         prompt_log_path: Optional[str] = None,
         ocr_model: Optional[str] = None,
@@ -1280,6 +1302,7 @@ class MCQGenerator:
                     difficulty_mix=difficulty_mix,
                     focus_topics=focus_topics,
                     custom_instructions=custom_instructions,
+                    explanation=explanation,
                 )
                 return self._build_mcq_set(all_qs, n, title, paths[0] if paths else None, blocks)
             else:
@@ -1291,6 +1314,7 @@ class MCQGenerator:
                     difficulty_mix=difficulty_mix,
                     focus_topics=focus_topics,
                     custom_instructions=custom_instructions,
+                    explanation=explanation,
                     show_progress=show_progress,
                 )
 
@@ -1303,6 +1327,7 @@ class MCQGenerator:
         difficulty_mix: Optional[str] = None,
         focus_topics: Optional[List[str]] = None,
         custom_instructions: Optional[str] = None,
+        explanation: Optional[str] = None,
         api_key_override: Optional[str] = None,
         prompt_log_path: Optional[str] = None,
         ocr_model: Optional[str] = None,
@@ -1334,6 +1359,7 @@ class MCQGenerator:
                                                   difficulty_mix=difficulty_mix,
                                                   focus_topics=focus_topics,
                                                   custom_instructions=custom_instructions,
+                                                  explanation=explanation,
                                                   pdf_bytes=all_bytes[0])
                     return self._build_mcq_set(all_qs, n, title, urls[0], [])
 
@@ -1349,7 +1375,8 @@ class MCQGenerator:
                 all_qs = self._vision_mcq_pdf(all_pngs, n=n, page_title=title,
                                               difficulty_mix=difficulty_mix,
                                               focus_topics=focus_topics,
-                                              custom_instructions=custom_instructions)
+                                              custom_instructions=custom_instructions,
+                                              explanation=explanation)
                 return self._build_mcq_set(all_qs, n, title, urls[0], [])
 
             m_name = "tesseract" if self.method == "tesseract" else "twostep"
@@ -1377,6 +1404,7 @@ class MCQGenerator:
                 difficulty_mix=difficulty_mix,
                 focus_topics=focus_topics,
                 custom_instructions=custom_instructions,
+                explanation=explanation,
                 show_progress=show_progress,
             )
             return self._build_mcq_set(all_qs, n, title, urls[0], all_blocks)
@@ -1390,6 +1418,7 @@ class MCQGenerator:
         difficulty_mix: Optional[str] = None,
         focus_topics: Optional[List[str]] = None,
         custom_instructions: Optional[str] = None,
+        explanation: Optional[str] = None,
         api_key_override: Optional[str] = None,
         prompt_log_path: Optional[str] = None,
         ocr_model: Optional[str] = None,
@@ -1418,6 +1447,7 @@ class MCQGenerator:
                                                   difficulty_mix=difficulty_mix,
                                                   focus_topics=focus_topics,
                                                   custom_instructions=custom_instructions,
+                                                  explanation=explanation,
                                                   pdf_bytes=pdf_bytes)
                     return self._build_mcq_set(all_qs, n, title, f"file://{paths[0]}", [])
 
@@ -1434,7 +1464,8 @@ class MCQGenerator:
                 all_qs = self._vision_mcq_pdf(all_pngs, n=n, page_title=title,
                                               difficulty_mix=difficulty_mix,
                                               focus_topics=focus_topics,
-                                              custom_instructions=custom_instructions)
+                                              custom_instructions=custom_instructions,
+                                              explanation=explanation)
                 return self._build_mcq_set(all_qs, n, title, f"file://{paths[0]}", [])
 
             m_name = "tesseract" if self.method == "tesseract" else "twostep"
@@ -1462,6 +1493,7 @@ class MCQGenerator:
                 difficulty_mix=difficulty_mix,
                 focus_topics=focus_topics,
                 custom_instructions=custom_instructions,
+                explanation=explanation,
                 show_progress=show_progress,
             )
             return self._build_mcq_set(all_qs, n, title, f"file://{paths[0]}", all_blocks)
@@ -1483,6 +1515,9 @@ class MCQGenerator:
             parts.append(per_call.strip())
         return "\n".join(parts)
 
+    def _resolve_explanation(self, per_call: Optional[str] = None) -> str:
+        return normalize_explanation_mode(per_call if per_call is not None else getattr(self, "explanation", "normal"))
+
     # ── Vision → MCQ (onestep method) ────────────────────────────────────
 
     def _vision_mcq(
@@ -1490,6 +1525,7 @@ class MCQGenerator:
         difficulty_mix: Optional[str] = None,
         focus_topics: Optional[List[str]] = None,
         custom_instructions: Optional[str] = None,
+        explanation: Optional[str] = None,
     ) -> List[MCQQuestion]:
         """Send images directly to vision model and parse MCQ JSON response.
         Tries self.image_ocr_extractor.vision_model first, then falls back
@@ -1516,6 +1552,7 @@ class MCQGenerator:
             return []
 
         # ── Build content: text instruction + all images ────────────────
+        explanation_mode = self._resolve_explanation(explanation)
         if n >= 999:
             instr_parts = ["Generate as many high-quality MCQ questions as the content in these images supports. Cover all distinct valid topics. If the images support none, return []."]
         else:
@@ -1540,8 +1577,9 @@ class MCQGenerator:
             "Return ONLY a JSON array, no markdown. "
             'Each item: {"question_html": "...", "options": ["A","B","C","D"], '
             '"answers": [0], "difficulty": "easy|medium|hard", '
-            '"explanation": "..."}'
+            f'"explanation": "{explanation_schema_text(explanation_mode)}"}}'
         )
+        instr_parts.append(explanation_instruction(explanation_mode))
         content: list = [{"type": "text", "text": "\n".join(instr_parts)}]
         for img_bytes in image_data:
             b64 = _base64.b64encode(img_bytes).decode("utf-8")
@@ -1617,6 +1655,7 @@ class MCQGenerator:
         difficulty_mix: Optional[str] = None,
         focus_topics: Optional[List[str]] = None,
         custom_instructions: Optional[str] = None,
+        explanation: Optional[str] = None,
         pdf_bytes: Optional[bytes] = None,
     ) -> List[MCQQuestion]:
         """Send PDF data (either as PNGs or native PDF bytes) to a vision model.
@@ -1632,6 +1671,7 @@ class MCQGenerator:
             return []
 
         # ── Build instruction text (common) ─────────────────────────────
+        explanation_mode = self._resolve_explanation(explanation)
         if n >= 999:
             instr_parts = ["Generate as many high-quality MCQ questions as the content in these PDF pages supports. Cover all distinct valid topics. If the PDF supports none, return []."]
         else:
@@ -1656,8 +1696,9 @@ class MCQGenerator:
             "Return ONLY a JSON array, no markdown. "
             'Each item: {"question_html": "...", "options": ["A","B","C","D"], '
             '"answers": [0], "difficulty": "easy|medium|hard", '
-            '"explanation": "..."}'
+            f'"explanation": "{explanation_schema_text(explanation_mode)}"}}'
         )
+        instr_parts.append(explanation_instruction(explanation_mode))
         instruction_text = "\n".join(instr_parts)
 
         # ── Build model candidate list: primary first, then fallbacks ───
@@ -1753,6 +1794,7 @@ class MCQGenerator:
         difficulty_mix: Optional[str] = None,
         focus_topics: Optional[List[str]] = None,
         custom_instructions: Optional[str] = None,
+        explanation: Optional[str] = None,
         show_progress: bool = False,
     ) -> MCQSet:
         """OCR images to text, optionally save to file, then generate MCQs from text."""
@@ -1785,6 +1827,7 @@ class MCQGenerator:
             difficulty_mix=difficulty_mix,
             focus_topics=focus_topics,
             custom_instructions=custom_instructions,
+            explanation=explanation,
             show_progress=show_progress,
         )
         return self._build_mcq_set(all_qs, n, title, source, blocks)
@@ -1930,13 +1973,15 @@ class MCQGenerator:
         difficulty_mix: Optional[str],
         focus_topics: Optional[List[str]],
         custom_instructions: Optional[str] = None,
+        explanation: Optional[str] = None,
         show_progress: bool = False,
     ) -> Tuple[List[MCQQuestion], str]:
         if not blocks:
             return [], ""
 
         all_questions: List[MCQQuestion] = []
-        system_prompt = build_system_prompt()
+        explanation_mode = self._resolve_explanation(explanation)
+        system_prompt = build_system_prompt(explanation=explanation_mode)
         remaining = n
 
         try:
@@ -1990,6 +2035,7 @@ class MCQGenerator:
                     focus_topics=focus_topics,
                     page_title=page_title,
                     custom_instructions=self._resolve_instructions(custom_instructions),
+                    explanation=explanation_mode,
                 )
                 
                 # Hybrid Vision: detect images with data
@@ -2056,6 +2102,7 @@ class MCQGenerator:
                 focus_topics=focus_topics,
                 page_title=page_title,
                 custom_instructions=self._resolve_instructions(custom_instructions),
+                explanation=explanation_mode,
             )
             
             # Hybrid Vision: detect images with data
@@ -2346,7 +2393,8 @@ class AsyncMCQGenerator(MCQGenerator):
         return await self._generate_async(blocks, kwargs.get("n", 999), kwargs.get("page_title", "Custom"), kwargs.get("source_url"), **kwargs)
 
     async def _generate_async(self, blocks: List[ContentBlock], n: int, page_title: str, source_url: Optional[str], **kwargs) -> MCQSet:
-        system_prompt = build_system_prompt()
+        explanation_mode = self._resolve_explanation(kwargs.get("explanation"))
+        system_prompt = build_system_prompt(explanation=explanation_mode)
         remaining = n
         all_questions = []
         backend_cache = {}
@@ -2368,8 +2416,13 @@ class AsyncMCQGenerator(MCQGenerator):
                 
                 current_backend.mcq_model = model_name
                 batch_n = min(remaining, self.batch_size)
-                text_prompt = build_user_prompt(blocks, batch_n, page_title=page_title, 
-                                               custom_instructions=self._resolve_instructions(kwargs.get("custom_instructions")))
+                text_prompt = build_user_prompt(
+                    blocks,
+                    batch_n,
+                    page_title=page_title,
+                    custom_instructions=self._resolve_instructions(kwargs.get("custom_instructions")),
+                    explanation=explanation_mode,
+                )
                 
                 user_content = text_prompt
                 image_data_blocks = [b for b in blocks if b.type == "image" and b.metadata.get("image_data")]
@@ -2393,8 +2446,13 @@ class AsyncMCQGenerator(MCQGenerator):
             attempts = 0
             while remaining > 0 and attempts < 2:
                 batch_n = min(remaining, self.batch_size)
-                text_prompt = build_user_prompt(blocks, batch_n, page_title=page_title, 
-                                               custom_instructions=self._resolve_instructions(kwargs.get("custom_instructions")))
+                text_prompt = build_user_prompt(
+                    blocks,
+                    batch_n,
+                    page_title=page_title,
+                    custom_instructions=self._resolve_instructions(kwargs.get("custom_instructions")),
+                    explanation=explanation_mode,
+                )
                 
                 user_content = text_prompt
                 image_data_blocks = [b for b in blocks if b.type == "image" and b.metadata.get("image_data")]

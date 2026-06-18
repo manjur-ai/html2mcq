@@ -196,6 +196,22 @@ class TestPrompts:
         assert "CODE" in up
         assert "5" in up
 
+    def test_explanation_off_prompt(self):
+        sp = build_system_prompt(explanation="off")
+        up = build_user_prompt(self._sample_blocks(), n=5, explanation="off")
+        assert 'Set "explanation" to ""' in sp
+        assert 'Set "explanation" to ""' in up
+
+    def test_explanation_shorter_prompt(self):
+        sp = build_system_prompt(explanation="shorter")
+        up = build_user_prompt(self._sample_blocks(), n=5, explanation="shorter")
+        assert "under 12 words" in sp
+        assert "under 12 words" in up
+
+    def test_invalid_explanation_prompt_raises(self):
+        with pytest.raises(ValueError, match="Invalid explanation mode"):
+            build_system_prompt(explanation="verbose")
+
 
 # ── MCQGenerator (mocked) ─────────────────────────────────────────────────────
 
@@ -237,6 +253,7 @@ class TestMCQGenerator:
         gen.extractor = ContentExtractor(min_text_length=10)
         gen.pdf_extractor = PDFExtractor(backend="pymupdf")
         gen.custom_instructions = ""
+        gen.explanation = "normal"
         gen.method = "tesseract"
         mock = MagicMock()
         mock.complete.return_value = MOCK_RESPONSE
@@ -618,6 +635,7 @@ class TestMCQGeneratorPDF:
         gen.extractor = ContentExtractor(min_text_length=10)
         gen.pdf_extractor = PDFExtractor(backend="pymupdf", chunk_size=500)
         gen.custom_instructions = ""
+        gen.explanation = "normal"
         gen.method = "tesseract"
         mock = MagicMock()
         mock.complete.return_value = MOCK_PDF_RESPONSE
@@ -798,6 +816,7 @@ class TestCustomInstructions:
         gen.extractor = ContentExtractor(min_text_length=10)
         gen.pdf_extractor = PDFExtractor(backend="pymupdf")
         gen.custom_instructions = instance_instructions
+        gen.explanation = "normal"
         gen.method = "tesseract"
         mock = MagicMock()
         mock.complete.return_value = MOCK_RESPONSE
@@ -920,6 +939,25 @@ class TestCustomInstructions:
         gen.from_html(SAMPLE_HTML, n=2,  enrich_pdfs=False)
         # System prompt must be identical regardless of custom instructions
         assert captured["system"] == expected_system
+
+    def test_explanation_off_reaches_generator_prompts(self):
+        gen = self._make_gen()
+        captured = {}
+        original = gen.backend.complete
+        def cap(s, u, m):
+            captured["system"] = s
+            captured["user"] = u
+            return original(s, u, m)
+        gen.backend.complete = cap
+
+        gen.from_html(SAMPLE_HTML, n=2, explanation="off", enrich_pdfs=False)
+        assert 'Set "explanation" to ""' in captured["system"]
+        assert 'Set "explanation" to ""' in captured["user"]
+
+    def test_invalid_explanation_generator_raises(self):
+        gen = self._make_gen()
+        with pytest.raises(ValueError, match="Invalid explanation mode"):
+            gen.from_html(SAMPLE_HTML, n=2, explanation="verbose", enrich_pdfs=False)
 
     def test_resolve_instructions_merges_correctly(self):
         """_resolve_instructions should merge instance + per-call with newline."""

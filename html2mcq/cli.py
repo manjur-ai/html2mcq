@@ -103,6 +103,8 @@ def main():
     gen_group.add_argument("--topics", nargs="*", help="Focus topics")
     gen_group.add_argument("--instructions", "-i", default="",
                            help='Custom instructions e.g. "Make answers very close and confusing"')
+    gen_group.add_argument("--explanation", choices=["normal", "off", "shorter"], default="normal",
+                           help="Explanation style: normal, off, or shorter (default: normal)")
     gen_group.add_argument("--pages", default=None,
                            help='Page range for PDFs e.g. "1-10,15,20-25" (1-indexed)')
     gen_group.add_argument("--progress", action="store_true",
@@ -208,6 +210,7 @@ def main():
             mcq_model=args.mcq_model,
             mcq_model_list=mcq_model_list,
             batch_size=args.batch_size,
+            explanation=args.explanation,
             ocr_model=args.ocr_model,
             ocr_models=ocr_models,
             method=args.method,
