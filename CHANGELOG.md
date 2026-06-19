@@ -1,3 +1,7 @@
+## [3.3.11] - 2026-06-19
+### Changed
+- **Normal explanation prompt**: Removed the leading `Explanation mode: normal.` label from the normal fixed instruction while keeping the teacher-style explanation guidance.
+
 ## [3.3.10] - 2026-06-19
 ### Changed
 - **Normal explanation prompt**: Normal MCQ explanations now ask for 1-2 short teacher-style sentences that justify the answer from the source idea, avoid merely quoting, and explain why the selected answer is best when options are close.

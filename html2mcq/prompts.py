@@ -31,7 +31,7 @@ def explanation_instruction(explanation: Optional[str] = "normal") -> str:
         return 'Explanation mode: off. Set "explanation" to "" for every question. Do not include reasoning text elsewhere.'
     if mode == "shorter":
         return 'Explanation mode: shorter. Keep "explanation" to one short sentence, ideally under 12 words, based only on the content.'
-    return 'Explanation mode: normal. Justify the answer in 1-2 short teacher-style sentences, using the source idea instead of merely quoting it. If options are close, explain why the selected answer is the best.'
+    return 'Justify the answer in 1-2 short teacher-style sentences, using the source idea instead of merely quoting it. If options are close, explain why the selected answer is the best.'
 
 
 _SYSTEM_BASE = """\

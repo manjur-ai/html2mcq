@@ -214,6 +214,8 @@ class TestPrompts:
         assert "1-2 short teacher-style sentences" in sp
         assert "source idea instead of merely quoting" in sp
         assert "If options are close" in up
+        assert "Explanation mode: normal" not in sp
+        assert "Explanation mode: normal" not in up
 
     def test_invalid_explanation_prompt_raises(self):
         with pytest.raises(ValueError, match="Invalid explanation mode"):
