@@ -94,6 +94,8 @@ print(mcq.to_pretty_str())
 
 Use `explanation="normal"`, `"shorter"`, or `"off"` to control the fixed MCQ explanation instruction. The same option is available in the CLI as `--explanation normal|shorter|off`.
 
+If generation fails after a provider call, `MCQGenerationError` exposes any captured token usage through `exc.token_usage`.
+
 ---
 
 ## Processing Methods (`--method`)

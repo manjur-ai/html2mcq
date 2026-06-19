@@ -1285,6 +1285,19 @@ class TestGenerateEdgeCases:
         with pytest.raises(RuntimeError, match="All MCQ models in list failed"):
             gen._generate([ContentBlock(type="text", content="hello")], n=2, page_title="Test", source_url=None, difficulty_mix=None, focus_topics=None)
 
+    def test_generation_error_carries_token_usage(self):
+        from html2mcq import MCQGenerationError
+        from html2mcq.generator import MCQGenerator
+        gen = MCQGenerator(api_key="sk-test", provider="openrouter", mcq_model="priority_list",
+                           mcq_model_list=["test-fail-model"], method="auto")
+        gen.backend.complete = lambda s, u, m: "not json"
+        gen.backend._usage = {"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18}
+        with pytest.raises(MCQGenerationError) as err:
+            gen._generate([ContentBlock(type="text", content="hello")], n=2, page_title="Test", source_url=None, difficulty_mix=None, focus_topics=None)
+        assert err.value.token_usage["prompt_tokens"] == 11
+        assert err.value.token_usage["completion_tokens"] == 7
+        assert err.value.token_usage["total_tokens"] == 18
+
 
 # ── _vision_mcq edge cases ──────────────────────────────────────────────────
 

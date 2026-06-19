@@ -39,7 +39,7 @@ def _retry_with_backoff(func, max_retries=3, initial_delay=1, factor=2, jitter=0
     raise last_err
 
 from .extractor import ContentExtractor
-from .models import ContentBlock, MCQQuestion, MCQSet
+from .models import ContentBlock, MCQGenerationError, MCQQuestion, MCQSet
 from .prompts import (
     build_system_prompt,
     build_user_prompt,
@@ -2067,8 +2067,9 @@ class MCQGenerator:
                           f"({len(batch)} questions, {batch_max_tokens} max_tokens)")
                     break
             else:
-                raise RuntimeError(
-                    f"All MCQ models in list failed: {[e['model'] for e in model_list]}"
+                raise MCQGenerationError(
+                    f"All MCQ models in list failed: {[e['model'] for e in model_list]}",
+                    token_usage=self.usage,
                 )
             if _pbar is not None:
                 _pbar.close()

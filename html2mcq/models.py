@@ -6,6 +6,14 @@ from typing import List, Optional, Dict, Any
 import json
 
 
+class MCQGenerationError(RuntimeError):
+    """Generation failed after an AI call; token_usage may still be available."""
+
+    def __init__(self, message: str, token_usage: Optional[Dict[str, Any]] = None):
+        super().__init__(message)
+        self.token_usage = token_usage or {}
+
+
 @dataclass
 class ContentBlock:
     """Represents a block of extracted content from an HTML page."""
