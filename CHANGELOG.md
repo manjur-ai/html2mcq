@@ -1,3 +1,7 @@
+## [3.3.10] - 2026-06-19
+### Changed
+- **Normal explanation prompt**: Normal MCQ explanations now ask for 1-2 short teacher-style sentences that justify the answer from the source idea, avoid merely quoting, and explain why the selected answer is best when options are close.
+
 ## [3.3.7] - 2026-06-18
 ### Fixed
 - **Token usage model reporting**: `MCQSet.metadata.token_usage` now includes the selected model as a provider-free model id, for example `llama-3.3-70b-versatile` instead of `(groq)/llama-3.3-70b-versatile`.

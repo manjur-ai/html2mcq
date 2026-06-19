@@ -22,7 +22,7 @@ def explanation_schema_text(explanation: Optional[str] = "normal") -> str:
         return "<empty string only>"
     if mode == "shorter":
         return "<one very short explanation sentence based only on the content, ideally under 12 words>"
-    return "<brief explanation based only on the content, or empty string>"
+    return "<1-2 short teacher-style sentences justifying the answer from the source idea>"
 
 
 def explanation_instruction(explanation: Optional[str] = "normal") -> str:
@@ -31,7 +31,7 @@ def explanation_instruction(explanation: Optional[str] = "normal") -> str:
         return 'Explanation mode: off. Set "explanation" to "" for every question. Do not include reasoning text elsewhere.'
     if mode == "shorter":
         return 'Explanation mode: shorter. Keep "explanation" to one short sentence, ideally under 12 words, based only on the content.'
-    return 'Explanation mode: normal. Provide a brief explanation based only on the content.'
+    return 'Explanation mode: normal. Justify the answer in 1-2 short teacher-style sentences, using the source idea instead of merely quoting it. If options are close, explain why the selected answer is the best.'
 
 
 _SYSTEM_BASE = """\

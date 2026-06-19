@@ -208,6 +208,13 @@ class TestPrompts:
         assert "under 12 words" in sp
         assert "under 12 words" in up
 
+    def test_explanation_normal_teacher_style_prompt(self):
+        sp = build_system_prompt(explanation="normal")
+        up = build_user_prompt(self._sample_blocks(), n=5, explanation="normal")
+        assert "1-2 short teacher-style sentences" in sp
+        assert "source idea instead of merely quoting" in sp
+        assert "If options are close" in up
+
     def test_invalid_explanation_prompt_raises(self):
         with pytest.raises(ValueError, match="Invalid explanation mode"):
             build_system_prompt(explanation="verbose")
