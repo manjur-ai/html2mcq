@@ -1,0 +1,121 @@
+{
+  "elapsed_sec": 9.15,
+  "mcq_model": "gemini-2.5-flash-lite",
+  "generated": 10,
+  "usage": {
+    "prompt_tokens": 361,
+    "completion_tokens": 1281,
+    "total_tokens": 1642,
+    "model": "gemini-2.5-flash-lite"
+  },
+  "json_chars": 4860,
+  "explanations_total_chars": 1315,
+  "question_stats": [
+    {
+      "i": 1,
+      "json_chars": 566,
+      "question_chars": 71,
+      "options_chars": 213,
+      "explanation_chars": 119
+    },
+    {
+      "i": 2,
+      "json_chars": 403,
+      "question_chars": 88,
+      "options_chars": 68,
+      "explanation_chars": 84
+    },
+    {
+      "i": 3,
+      "json_chars": 476,
+      "question_chars": 85,
+      "options_chars": 116,
+      "explanation_chars": 112
+    },
+    {
+      "i": 4,
+      "json_chars": 425,
+      "question_chars": 72,
+      "options_chars": 84,
+      "explanation_chars": 104
+    },
+    {
+      "i": 5,
+      "json_chars": 358,
+      "question_chars": 66,
+      "options_chars": 60,
+      "explanation_chars": 67
+    },
+    {
+      "i": 6,
+      "json_chars": 561,
+      "question_chars": 96,
+      "options_chars": 174,
+      "explanation_chars": 126
+    },
+    {
+      "i": 7,
+      "json_chars": 436,
+      "question_chars": 61,
+      "options_chars": 114,
+      "explanation_chars": 98
+    },
+    {
+      "i": 8,
+      "json_chars": 453,
+      "question_chars": 69,
+      "options_chars": 80,
+      "explanation_chars": 141
+    },
+    {
+      "i": 9,
+      "json_chars": 429,
+      "question_chars": 68,
+      "options_chars": 85,
+      "explanation_chars": 113
+    },
+    {
+      "i": 10,
+      "json_chars": 695,
+      "question_chars": 97,
+      "options_chars": 84,
+      "explanation_chars": 351
+    }
+  ],
+  "questions_preview": [
+    {
+      "question_html": "What is the primary purpose of the Control Panel according to the text?",
+      "options": [
+        "To manage user accounts and personalize appearance.",
+        "To change date and time settings.",
+        "To assist in changing the system's date and time accurately and synchronised.",
+        "To install new programs and uninstall existing ones."
+      ],
+      "answers": [
+        2
+      ],
+      "multi": false,
+      "marks": 1.0,
+      "negative_marks": 0.25,
+      "difficulty": "easy",
+      "explanation": "The text states, \"Control Panel helps change your system's date and time to make sure it is accurate and synchronised.\""
+    },
+    {
+      "question_html": "Which option in the Control Panel should you click on first to change the date and time?",
+      "options": [
+        "User Accounts",
+        "System and Security",
+        "Clock and Region",
+        "Network and Internet"
+      ],
+      "answers": [
+        2
+      ],
+      "multi": false,
+      "marks": 1.0,
+      "negative_marks": 0.25,
+      "difficulty": "easy",
+      "explanation": "The instructions state, \"Click on the Clock and Region option in the Control Panel.\""
+    }
+  ]
+}

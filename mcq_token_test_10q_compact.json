@@ -1,0 +1,121 @@
+{
+  "elapsed_sec": 17.26,
+  "mcq_model": "gemini-2.5-flash-lite",
+  "generated": 10,
+  "usage": {
+    "prompt_tokens": 361,
+    "completion_tokens": 1192,
+    "total_tokens": 1553,
+    "model": "gemini-2.5-flash-lite"
+  },
+  "json_chars": 4445,
+  "explanations_total_chars": 1073,
+  "question_stats": [
+    {
+      "i": 1,
+      "json_chars": 517,
+      "question_chars": 75,
+      "options_chars": 151,
+      "explanation_chars": 130
+    },
+    {
+      "i": 2,
+      "json_chars": 392,
+      "question_chars": 85,
+      "options_chars": 62,
+      "explanation_chars": 84
+    },
+    {
+      "i": 3,
+      "json_chars": 434,
+      "question_chars": 105,
+      "options_chars": 75,
+      "explanation_chars": 91
+    },
+    {
+      "i": 4,
+      "json_chars": 348,
+      "question_chars": 68,
+      "options_chars": 52,
+      "explanation_chars": 67
+    },
+    {
+      "i": 5,
+      "json_chars": 469,
+      "question_chars": 72,
+      "options_chars": 108,
+      "explanation_chars": 126
+    },
+    {
+      "i": 6,
+      "json_chars": 448,
+      "question_chars": 61,
+      "options_chars": 126,
+      "explanation_chars": 98
+    },
+    {
+      "i": 7,
+      "json_chars": 514,
+      "question_chars": 63,
+      "options_chars": 145,
+      "explanation_chars": 143
+    },
+    {
+      "i": 8,
+      "json_chars": 475,
+      "question_chars": 68,
+      "options_chars": 118,
+      "explanation_chars": 128
+    },
+    {
+      "i": 9,
+      "json_chars": 348,
+      "question_chars": 54,
+      "options_chars": 56,
+      "explanation_chars": 77
+    },
+    {
+      "i": 10,
+      "json_chars": 442,
+      "question_chars": 50,
+      "options_chars": 102,
+      "explanation_chars": 129
+    }
+  ],
+  "questions_preview": [
+    {
+      "question_html": "What is the primary function of the Control Panel as described in the text?",
+      "options": [
+        "To change the wallpaper and screen saver.",
+        "To help change your system's date and time.",
+        "To install new software applications.",
+        "To manage network connections."
+      ],
+      "answers": [
+        1
+      ],
+      "multi": false,
+      "marks": 1.0,
+      "negative_marks": 0.25,
+      "difficulty": "easy",
+      "explanation": "The text explicitly states, 'Control Panel helps change your system's date and time to make sure it is accurate and synchronised.'"
+    },
+    {
+      "question_html": "Which option in the Control Panel should you click first to change the date and time?",
+      "options": [
+        "System and Security",
+        "User Accounts",
+        "Clock and Region",
+        "Ease of Access"
+      ],
+      "answers": [
+        2
+      ],
+      "multi": false,
+      "marks": 1.0,
+      "negative_marks": 0.25,
+      "difficulty": "easy",
+      "explanation": "The instructions state, 'Click on the Clock and Region option in the Control Panel.'"
+    }
+  ]
+}

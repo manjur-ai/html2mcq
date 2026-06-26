@@ -1,0 +1,358 @@
+[
+  {
+    "name": "onestep_gemini_2_5_flash_lite",
+    "ok": true,
+    "duration_sec": 8.56,
+    "metadata": {
+      "provider": "auto",
+      "mcq_model": "gemini-2.5-flash-lite",
+      "method": "onestep",
+      "requested_n": 10,
+      "generated_less_than_requested": false,
+      "empty_reason": null,
+      "content_blocks": 1,
+      "content_types": [
+        "image"
+      ],
+      "token_usage": {
+        "prompt_tokens": 389,
+        "completion_tokens": 963,
+        "total_tokens": 1352,
+        "model": "gemini-2.5-flash-lite"
+      }
+    },
+    "usage": {
+      "prompt_tokens": 389,
+      "completion_tokens": 963,
+      "total_tokens": 1352,
+      "model": "gemini-2.5-flash-lite"
+    },
+    "questions": [
+      {
+        "question_html": "What is the primary function of the Control Panel, as stated in the text?",
+        "options": [
+          "To manage user accounts",
+          "To change the system's date and time",
+          "To uninstall programs",
+          "To adjust display settings"
+        ],
+        "answers": [
+          1
+        ],
+        "multi": false,
+        "difficulty": "easy",
+        "explanation": ""
+      },
+      {
+        "question_html": "According to the text, how can you ensure your system's date and time are accurate and synchronized?",
+        "options": [
+          "By regularly restarting the computer",
+          "By using the Control Panel",
+          "By connecting to the internet",
+          "By manually updating the time"
+        ],
+        "answers": [
+          1
+        ],
+        "multi": false,
+        "difficulty": "easy",
+        "explanation": ""
+      },
+      {
+        "question_html": "Which option in the Control Panel should you click first to change the date and time?",
+        "options": [
+          "User Accounts",
+          "System and Security",
+          "Clock and Region",
+          "Network and Internet"
+        ],
+        "answers": [
+          2
+        ],
+        "multi": false,
+        "difficulty": "easy",
+        "explanation": ""
+      },
+      {
+        "question_html": "After selecting 'Clock and Region', which option do you need to click to proceed with changing the date and time?",
+        "options": [
+          "Date and Time",
+          "Change date and time",
+          "Additional Clocks",
+          "Internet Time"
+        ],
+        "answers": [
+          0
+        ],
+        "multi": false,
+        "difficulty": "medium",
+        "explanation": ""
+      },
+      {
+        "question_html": "What is displayed by default when the 'Date and Time' tab is selected in the dialog box?",
+        "options": [
+          "The current year and month",
+          "The current date and time",
+          "A calendar for the current month",
+          "Options to change the time zone"
+        ],
+        "answers": [
+          2
+        ],
+        "multi": false,
+        "difficulty": "medium",
+        "explanation": ""
+      },
+      {
+        "question_html": "How can you change the month in the calendar when setting the date?",
+        "options": [
+          "By typing the month directly",
+          "By clicking on the month name",
+          "By using the displayed forward/backward arrow buttons",
+          "By selecting from a dropdown menu"
+        ],
+        "answers": [
+          2
+        ],
+        "multi": false,
+        "difficulty": "easy",
+        "explanation": ""
+      },
+      {
+        "question_html": "To change the hour, where should you click in the 'Date and Time Settings' dialog box?",
+        "options": [
+          "On the clock face",
+          "In the time field located below the clock",
+          "On the 'Change date and time' button",
+          "On the spin arrows"
+        ],
+        "answers": [
+          1
+        ],
+        "multi": false,
+        "difficulty": "medium",
+        "explanation": ""
+      },
+      {
+        "question_html": "What mechanism is used to increase or decrease the hours and minutes?",
+        "options": [
+          "Mouse wheel scrolling",
+          "Clicking and dragging",
+          "Spin arrows",
+          "Keyboard input"
+        ],
+        "answers": [
+          2
+        ],
+        "multi": false,
+        "difficulty": "easy",
+        "explanation": ""
+      },
+      {
+        "question_html": "What action confirms the changes made to the date and time settings?",
+        "options": [
+          "Clicking 'Cancel'",
+          "Clicking 'OK'",
+          "Clicking 'Apply'",
+          "Closing the dialog box"
+        ],
+        "answers": [
+          1
+        ],
+        "multi": false,
+        "difficulty": "easy",
+        "explanation": ""
+      },
+      {
+        "question_html": "Figure 1.7 is labeled as:",
+        "options": [
+          "Control Panel Window",
+          "Changing Date and Time",
+          "Date and Time Settings Dialog Box",
+          "Lab Session Instructions"
+        ],
+        "answers": [
+          2
+        ],
+        "multi": false,
+        "difficulty": "easy",
+        "explanation": ""
+      }
+    ]
+  },
+  {
+    "name": "manual_twostep_gemini_ocr_deepseek_v4_flash",
+    "ok": true,
+    "duration_sec": 29.59,
+    "ocr_text": "I want to learn about the different movements of the Earth: Rotation and\nevolution.\nto understand the effects of these\nstand how seasons take\n-summer solstice,\nControl Panel\nAdjust your computer's settings\nSystem and Security\nReview your computer's status\nNetwork and Internet\nView network status and tasks\nHardware and Sound\nView devices and printers\nAdd a device\nAdjust commonly used mobility settings\nPrograms\nUninstall a program\nUser Accounts\nChange account type\nAppearance and Personalization\nClock and Region\nChange date, time, or number formats\nEase of Access\nLet Windows suggest settings\nOptimise visual display\nChanging Date and Time\nFigure 1.5: Control Panel Window\nControl Panel helps change your system's date and time to make sure it is accurate and\nsynchronised. You can even customise date and time according to your preferences.\nLab Session\nVisit the lab and follow the given steps to change the date and time:\nClick on the Clock and Region option in the Control Panel.\nSelect the Date and Time option. The Date and Time\ndialog box will appear.\nBy default, the Date and Time tab is selected.\nTo Change Date\nClick on the Change date and time button. The Date\nand Time Settings dialog box will appear.\nSelect the current day in the calendar. You can change\nthe month using the displayed forward/backward arrow\nbuttons present on the calendar.\nTo Change Time\nTo change the hour, select the hour in the time field\nlocated below the clock.\nClick on the spin arrows to increase or decrease the\nhours, as desired. Similarly, you can change the minutes\nand seconds. Click on OK. The Date and Time settings of\nthe system will change accordingly.\nFigure 1.6: Changing Date and Time\nFigure 1.7: Date and Time\nSettings Dialog Box\nKIPS\n11",
+    "usage": {
+      "prompt_tokens": 1459,
+      "completion_tokens": 2904,
+      "total_tokens": 4363,
+      "ocr": {
+        "prompt_tokens": 292,
+        "completion_tokens": 394,
+        "total_tokens": 686,
+        "model": "gemini-2.5-flash-lite"
+      },
+      "generation": {
+        "prompt_tokens": 1167,
+        "completion_tokens": 2510,
+        "total_tokens": 3677,
+        "model": "deepseek-v4-flash"
+      }
+    },
+    "questions": [
+      {
+        "question_html": "According to the handwritten note, what are the two movements of the Earth mentioned?",
+        "options": [
+          "Rotation and Revolution",
+          "Rotation and Evolution",
+          "Revolution and Evolution",
+          "Rotation and Summer Solstice"
+        ],
+        "answers": [
+          1
+        ],
+        "multi": false,
+        "difficulty": "easy",
+        "explanation": ""
+      },
+      {
+        "question_html": "What is the purpose of the Control Panel according to the text?",
+        "options": [
+          "To browse the internet",
+          "To adjust computer settings",
+          "To play games",
+          "To create documents"
+        ],
+        "answers": [
+          1
+        ],
+        "multi": false,
+        "difficulty": "easy",
+        "explanation": ""
+      },
+      {
+        "question_html": "Which option in Control Panel is used to change date and time?",
+        "options": [
+          "System and Security",
+          "Network and Internet",
+          "Clock and Region",
+          "User Accounts"
+        ],
+        "answers": [
+          2
+        ],
+        "multi": false,
+        "difficulty": "easy",
+        "explanation": ""
+      },
+      {
+        "question_html": "What is the first step mentioned in the lab session to change the date and time?",
+        "options": [
+          "Select the Date and Time option",
+          "Click on the Clock and Region option",
+          "Click on the Change date and time button",
+          "Click on OK"
+        ],
+        "answers": [
+          1
+        ],
+        "multi": false,
+        "difficulty": "medium",
+        "explanation": ""
+      },
+      {
+        "question_html": "When you select the Date and Time option in Clock and Region, which dialog box appears?",
+        "options": [
+          "Control Panel",
+          "Date and Time Settings",
+          "Date and Time",
+          "System Settings"
+        ],
+        "answers": [
+          2
+        ],
+        "multi": false,
+        "difficulty": "medium",
+        "explanation": ""
+      },
+      {
+        "question_html": "Which tab is selected by default in the Date and Time dialog box?",
+        "options": [
+          "Time Zone tab",
+          "Internet Time tab",
+          "Date and Time tab",
+          "Additional Clocks tab"
+        ],
+        "answers": [
+          2
+        ],
+        "multi": false,
+        "difficulty": "medium",
+        "explanation": ""
+      },
+      {
+        "question_html": "How can you change the month in the calendar while changing the date?",
+        "options": [
+          "By clicking on the day",
+          "By using spin arrows",
+          "By clicking the forward/backward arrow buttons on the calendar",
+          "By typing a new month"
+        ],
+        "answers": [
+          2
+        ],
+        "multi": false,
+        "difficulty": "hard",
+        "explanation": ""
+      },
+      {
+        "question_html": "According to the steps, how do you change the hour in the time field?",
+        "options": [
+          "Type the number directly",
+          "Select the hour and use the spin arrows",
+          "Drag the clock hands",
+          "Select from a dropdown menu"
+        ],
+        "answers": [
+          1
+        ],
+        "multi": false,
+        "difficulty": "hard",
+        "explanation": ""
+      },
+      {
+        "question_html": "Which Control Panel section includes the option 'Review your computer's status'?",
+        "options": [
+          "System and Security",
+          "Network and Internet",
+          "Programs",
+          "User Accounts"
+        ],
+        "answers": [
+          0
+        ],
+        "multi": false,
+        "difficulty": "medium",
+        "explanation": ""
+      },
+      {
+        "question_html": "What is shown in Figure 1.7 according to the text?",
+        "options": [
+          "Control Panel Window",
+          "Changing Date and Time",
+          "Date and Time Settings Dialog Box",
+          "Date and Time Dialog Box"
+        ],
+        "answers": [
+          2
+        ],
+        "multi": false,
+        "difficulty": "hard",
+        "explanation": ""
+      }
+    ]
+  }
+]

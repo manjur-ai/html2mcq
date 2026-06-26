@@ -1,0 +1,192 @@
+[
+  {
+    "name": "onestep_gemini_2_5_flash_lite_normal",
+    "duration_sec": 10.11,
+    "usage": {
+      "prompt_tokens": 389,
+      "completion_tokens": 798,
+      "total_tokens": 1187,
+      "model": "gemini-2.5-flash-lite"
+    },
+    "questions": [
+      {
+        "question_html": "What is the primary function of the Control Panel as described in the text?",
+        "options": [
+          "To manage user accounts and security settings.",
+          "To change the computer's date and time and customize them.",
+          "To install and uninstall programs.",
+          "To adjust network and internet settings."
+        ],
+        "answers": [
+          1
+        ],
+        "explanation": "The text states, \"Control Panel helps change your system's date and time to make sure it is accurate and synchronised. You can even customise date and time according to your preferences.\""
+      },
+      {
+        "question_html": "In the lab session, what is the first step to change the date and time?",
+        "options": [
+          "Click on the 'Date and Time' option.",
+          "Click on the 'Clock and Region' option in the Control Panel.",
+          "Click on the 'Change date and time button'.",
+          "Select the 'Date and Time' tab."
+        ],
+        "answers": [
+          1
+        ],
+        "explanation": "The instructions state, \"Visit the lab and follow the given steps to change the date and time: Click on the Clock and Region option in the Control Panel.\""
+      },
+      {
+        "question_html": "After clicking on the 'Clock and Region' option, which option should be selected next?",
+        "options": [
+          "Change date and time button",
+          "Date and Time tab",
+          "Date and Time option",
+          "Change calendar settings"
+        ],
+        "answers": [
+          2
+        ],
+        "explanation": "The text says, \"Select the Date and Time option. The Date and Time dialog box will appear.\""
+      },
+      {
+        "question_html": "How can you change the month using the calendar in the 'Date and Time Settings' dialog box?",
+        "options": [
+          "By clicking on the month name.",
+          "By using the displayed forward/backward arrow buttons.",
+          "By typing the month name.",
+          "By selecting the 'Change calendar settings' option."
+        ],
+        "answers": [
+          1
+        ],
+        "explanation": "The text explains, \"You can change the month using the displayed forward/backward arrow buttons present on the calendar.\""
+      },
+      {
+        "question_html": "To change the hour, where should you click in the 'Date and Time Settings' dialog box?",
+        "options": [
+          "On the spin arrows.",
+          "In the time field located below the clock.",
+          "On the 'Change date and time' button.",
+          "On the calendar."
+        ],
+        "answers": [
+          1
+        ],
+        "explanation": "Under the section 'To Change Time', the instruction is to \"To change the hour, select the hour in the time field located below the clock.\""
+      },
+      {
+        "question_html": "After adjusting the hours, minutes, and seconds, what button should be clicked to apply the changes?",
+        "options": [
+          "Cancel",
+          "Apply",
+          "OK",
+          "Save"
+        ],
+        "answers": [
+          2
+        ],
+        "explanation": "The text states, \"Click on OK. The Date and Time settings of the system will change accordingly.\""
+      }
+    ]
+  },
+  {
+    "name": "twostep_gemini_ocr_deepseek_v4_flash_normal",
+    "duration_sec": 31.88,
+    "usage": {
+      "ocr": {
+        "prompt_tokens": 292,
+        "completion_tokens": 406,
+        "total_tokens": 698,
+        "model": "gemini-2.5-flash-lite"
+      },
+      "generation": {
+        "prompt_tokens": 1171,
+        "completion_tokens": 3320,
+        "total_tokens": 4491,
+        "model": "deepseek-v4-flash"
+      },
+      "total_tokens": 5189
+    },
+    "ocr_text": "I want to learn about the different movements of the Earth: Rotation and evolution.\nunderstand the effects of these 'stand how seasons take 'summer solstice.\n-reas,\nane.\nControl Panel\nAdjust your computer's settings\nSystem and Security\nReview your computer's status\nFile backup copies of your files with File History\nBackup and Restore (Windows 7)\nNetwork and Internet\nView network status and tasks\nHardware and Sound\nView devices and printers\nAdd a device\nAdjust commonly used mobility settings\nPrograms\nUninstall a program\nUser Accounts\nChange account type\nAppearance and Personalization\nClock and Region\nChange date, time, or number formats\nEase of Access\nLet Windows suggest settings\nOptimize visual display\nFigure 1.5: Control Panel Window\nChanging Date and Time\nControl Panel helps change your system's date and time to make sure it is accurate and synchronised. You can even customise date and time according to your preferences.\nLab Session\nVisit the lab and follow the given steps to change the date and time:\nClick on the Clock and Region option in the Control Panel.\nSelect the Date and Time option. The Date and Time dialog box will appear.\nBy default, the Date and Time tab is selected.\nTo Change Date\nClick on the Change date and time button. The Date and Time Settings dialog box will appear.\nSelect the current day in the calendar. You can change the month using the displayed forward/backward arrow buttons present on the calendar.\nTo Change Time\nTo change the hour, select the hour in the time field located below the clock.\nClick on the spin arrows to increase or decrease the hours, as desired. Similarly, you can change the minutes and seconds. Click on OK. The Date and Time settings of the system will change accordingly.\nFigure 1.6: Changing Date and Time\nFigure 1.7: Date and Time Settings Dialog Box\nKIPS\n11",
+    "questions": [
+      {
+        "question_html": "Which category in Control Panel is used to change the system's date and time?",
+        "options": [
+          "Clock and Region",
+          "System and Security",
+          "Appearance and Personalization",
+          "Ease of Access"
+        ],
+        "answers": [
+          0
+        ],
+        "explanation": "According to the content, the Clock and Region option in Control Panel allows changing date and time."
+      },
+      {
+        "question_html": "In the Date and Time dialog box, which tab is selected by default?",
+        "options": [
+          "Date and Time",
+          "Clock",
+          "Time Zone",
+          "Internet Time"
+        ],
+        "answers": [
+          0
+        ],
+        "explanation": "The content states that by default, the Date and Time tab is selected."
+      },
+      {
+        "question_html": "To change the month when setting the date, which control do you use?",
+        "options": [
+          "Forward/backward arrow buttons",
+          "Spin arrows",
+          "Drop-down list",
+          "Slider"
+        ],
+        "answers": [
+          0
+        ],
+        "explanation": "The content instructs to change the month using the displayed forward/backward arrow buttons on the calendar."
+      },
+      {
+        "question_html": "Which of the following is NOT listed as a category in the Control Panel window?",
+        "options": [
+          "Devices and Printers",
+          "Network and Internet",
+          "Programs",
+          "User Accounts"
+        ],
+        "answers": [
+          0
+        ],
+        "explanation": "The Control Panel categories mentioned are System and Security, Network and Internet, Hardware and Sound, Programs, User Accounts, Appearance and Personalization, Clock and Region, and Ease of Access. Devices and Printers is a link under Hardware and Sound, not a category."
+      },
+      {
+        "question_html": "After clicking the 'Change date and time' button, which dialog box appears?",
+        "options": [
+          "Date and Time Settings",
+          "Date and Time Properties",
+          "Clock Settings",
+          "System Settings"
+        ],
+        "answers": [
+          0
+        ],
+        "explanation": "The content states: 'Click on the Change date and time button. The Date and Time Settings dialog box will appear.'"
+      },
+      {
+        "question_html": "Which sequence correctly shows the steps to change the system date, as described in the content?",
+        "options": [
+          "Clock and Region → Date and Time → Change date and time → Select current day",
+          "Date and Time → Clock and Region → Change date and time → Select current day",
+          "Change date and time → Clock and Region → Date and Time → Select current day",
+          "Select current day → Change date and time → Date and Time → Clock and Region"
+        ],
+        "answers": [
+          0
+        ],
+        "explanation": "The content instructs: first click Clock and Region in Control Panel, then select Date and Time, then click Change date and time, then select the current day in the calendar."
+      }
+    ]
+  }
+]

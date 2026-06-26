@@ -1,3 +1,7 @@
+## [3.3.12] - 2026-06-26
+### Changed
+- **README**: Rewrote with a "What is html2mcq?" section, CV-ready professional intro.
+
 ## [3.3.11] - 2026-06-19
 ### Changed
 - **Normal explanation prompt**: Removed the leading `Explanation mode: normal.` label from the normal fixed instruction while keeping the teacher-style explanation guidance.

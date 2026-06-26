@@ -1,0 +1,137 @@
+{
+  "image": "C:\\codex\\tinyeditor-package2\\html2mcq\\WhatsApp Image 2026-06-07 at 18.53.13.jpeg",
+  "image_bytes": 228695,
+  "elapsed_sec": 10.0,
+  "provider": "auto",
+  "mcq_model": "gemini-2.5-flash-lite",
+  "method": "onestep",
+  "requested": 10,
+  "generated": 10,
+  "usage": {
+    "prompt_tokens": 361,
+    "completion_tokens": 1213,
+    "total_tokens": 1574,
+    "model": "gemini-2.5-flash-lite"
+  },
+  "json_chars": 4643,
+  "questions_total_json_chars": 4585,
+  "explanations_total_chars": 1250,
+  "question_stats": [
+    {
+      "i": 1,
+      "json_chars": 531,
+      "question_chars": 74,
+      "options_chars": 109,
+      "explanation_chars": 187,
+      "options_count": 4
+    },
+    {
+      "i": 2,
+      "json_chars": 409,
+      "question_chars": 95,
+      "options_chars": 69,
+      "explanation_chars": 84,
+      "options_count": 4
+    },
+    {
+      "i": 3,
+      "json_chars": 447,
+      "question_chars": 115,
+      "options_chars": 80,
+      "explanation_chars": 91,
+      "options_count": 4
+    },
+    {
+      "i": 4,
+      "json_chars": 393,
+      "question_chars": 100,
+      "options_chars": 52,
+      "explanation_chars": 78,
+      "options_count": 4
+    },
+    {
+      "i": 5,
+      "json_chars": 411,
+      "question_chars": 80,
+      "options_chars": 52,
+      "explanation_chars": 118,
+      "options_count": 4
+    },
+    {
+      "i": 6,
+      "json_chars": 516,
+      "question_chars": 100,
+      "options_chars": 132,
+      "explanation_chars": 121,
+      "options_count": 4
+    },
+    {
+      "i": 7,
+      "json_chars": 467,
+      "question_chars": 95,
+      "options_chars": 105,
+      "explanation_chars": 104,
+      "options_count": 4
+    },
+    {
+      "i": 8,
+      "json_chars": 446,
+      "question_chars": 69,
+      "options_chars": 73,
+      "explanation_chars": 143,
+      "options_count": 4
+    },
+    {
+      "i": 9,
+      "json_chars": 416,
+      "question_chars": 68,
+      "options_chars": 87,
+      "explanation_chars": 100,
+      "options_count": 4
+    },
+    {
+      "i": 10,
+      "json_chars": 549,
+      "question_chars": 94,
+      "options_chars": 68,
+      "explanation_chars": 224,
+      "options_count": 4
+    }
+  ],
+  "questions_preview": [
+    {
+      "question_html": "What is the primary purpose of the Control Panel as described in the text?",
+      "options": [
+        "To change computer settings and time",
+        "To install new software",
+        "To manage user accounts",
+        "To adjust screen resolution"
+      ],
+      "answers": [
+        0
+      ],
+      "multi": false,
+      "marks": 1.0,
+      "negative_marks": 0.25,
+      "difficulty": "easy",
+      "explanation": "The text states, 'Control Panel helps change your system's date and time to make sure it is accurate and synchronised. You can even customise date and time according to your preferences.'"
+    },
+    {
+      "question_html": "In the 'Lab Session' section, which option should be clicked first to change the date and time?",
+      "options": [
+        "System and Security",
+        "Network and Internet",
+        "Clock and Region",
+        "Ease of Access"
+      ],
+      "answers": [
+        2
+      ],
+      "multi": false,
+      "marks": 1.0,
+      "negative_marks": 0.25,
+      "difficulty": "easy",
+      "explanation": "The instructions state, 'Click on the Clock and Region option in the Control Panel.'"
+    }
+  ]
+}
